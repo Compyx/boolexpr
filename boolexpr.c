@@ -511,25 +511,21 @@ bool bexpr_tokenize(const char *text)
 }
 
 
-bool bexpr_evaluate(bool *result)
+/** \brief  Convert infix expression to postfix expression
+ *
+ * Use the Shunting yard algorithm to convert an infix expression to postfix
+ * ("reverse polish notation").
+ *
+ * \return  \c true on succces
+ */
+static bool infix_to_postfix(void)
 {
-    bool status = true;
-    int oper1;
-    int oper2;
-    int prec1;
-    int prec2;
-    int assoc1;
+    int  oper1;
+    int  oper2;
+    int  prec1;
+    int  prec2;
+    int  assoc1;
 
-    if (expr_length <= 0) {
-        *result = false;
-        return false;
-    }
-
-    stack_reset();
-    queue_reset();
-
-    /* convert infix expression to postfix expression using the shunting yard
-     * algoritm */
     for (size_t i = 0; i < expr_length; i++) {
         int token = expr_tokens[i];
 
@@ -593,8 +589,7 @@ bool bexpr_evaluate(bool *result)
 
         if (oper1 == BEXPR_LPAREN) {
             printf("%s(): unmatched left parenthesis\n", __func__);
-            status = false;
-            break;
+            return false;
         }
         queue_enqueue(oper1);
     }
@@ -603,7 +598,34 @@ bool bexpr_evaluate(bool *result)
     queue_print();
     putchar('\n');
 
+    return true;
+}
+
+
+/** \brief  Evaluate boolean expression
+ *
+ * Evaluate boolean expression, either obtained by bexpr_parse() or by adding
+ * tokens with bexpr_add_token().
+ *
+ * \param[out]  result  result of evaluation
+ *
+ * \return  \c true on succes
+ */
+bool bexpr_evaluate(bool *result)
+{
+    *result = false;
+
+    if (expr_length <= 0) {
+        return false;
+    }
+
+    stack_reset();
+    queue_reset();
+
+    if (!infix_to_postfix()) {
+        return false;
+    }
 
     *result = true;
-    return status;
+    return true;
 }
