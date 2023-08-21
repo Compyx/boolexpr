@@ -7,14 +7,45 @@
 #include "boolexpr.h"
 
 
+/** \brief  Array length helper
+ *
+ * Determine size of \a arr in number of elements.
+ */
 #define ARRAY_LEN(arr)  (sizeof arr / sizeof arr[0])
 
+
+/** \brief  Error messages */
+static const char *error_messages[] = {
+    "OK",
+    "fatal error",
+    "expected token",
+    "invalid token",
+    "expected left parenthesis",
+    "expected right parenthesis",
+    "unmatched parentheses",
+    "expression is empty"
+};
+
+
+/** \brief  Error code */
 int bexpr_errno = 0;
 
-static char   *expr_text;
-static int    *expr_tokens;
-static size_t  expr_length;
-static size_t  expr_avail;
+
+/** \brief  Get error message for error number
+ *
+ * \param[in]   errnum  error number
+ *
+ * \return  error message
+ */
+const char *bexpr_strerror(int errnum)
+{
+    if (errnum < 0 || errnum >= (int)ARRAY_LEN(error_messages)) {
+        return "unknown error";
+    } else {
+        return error_messages[errnum];
+    }
+}
+
 
 
 
@@ -122,6 +153,16 @@ static const int token_chars[] = {
     '(', ')', '!', '&', '|', '0', '1', 'a', 'e', 'f', 'l', 'r', 's', 't', 'u'
 };
 
+
+/** \brief  Set error code (and for now print error code and message on stderr
+ *
+ * \param[in]   errnum  error code
+ */
+#define SET_ERROR(errnum) \
+    bexpr_errno = errnum; \
+    fprintf(stderr, "%s(): error %d: %s\n", __func__, errnum, bexpr_strerror(errnum));
+
+
 /** \brief  Determine if a character is a valid token text character
  *
  * \param[in]   ch  character to check
@@ -188,6 +229,9 @@ static const char *skip_whitespace(const char *s)
  * \param[out]  endptr  location in \a text of first non-token character
  *
  * \return  token ID or \c BEXPR_INVALID on error
+ *
+ * \throw   BEXPR_ERR_EXPECTED_TOKEN
+ * \throw   BEXPR_ERR_INVALID_TOKEN
  */
 static int token_parse(const char *text, const char **endptr)
 {
@@ -202,6 +246,7 @@ static int token_parse(const char *text, const char **endptr)
         if (endptr != NULL) {
             *endptr = NULL;
         }
+        SET_ERROR(BEXPR_ERR_EXPECTED_TOKEN);
         return BEXPR_INVALID;
     }
 
@@ -209,7 +254,6 @@ static int token_parse(const char *text, const char **endptr)
     if (tlen > MAX_TOKEN_LEN) {
         tlen = MAX_TOKEN_LEN;
     }
-    //printf("%s(): testing token '%s'\n", __func__, token);
 
     /* look up token, reducing size (greedy matching) each time */
     while (tlen >= 1) {
@@ -223,6 +267,7 @@ static int token_parse(const char *text, const char **endptr)
         }
         tlen--;
     }
+    SET_ERROR(BEXPR_ERR_INVALID_TOKEN);
     return BEXPR_INVALID;
 }
 
@@ -481,6 +526,12 @@ static int queue_dequeue(void)
 #endif
 
 
+static char   *expr_text;
+static int    *expr_tokens;
+static size_t  expr_length;
+static size_t  expr_avail;
+
+
 /** \brief  Initialize expression for use
  *
  * Allocate memory for tokenizer and evaluator.
@@ -561,6 +612,7 @@ bool bexpr_add_token(int token)
         expr_tokens[expr_length++] = token;
         return true;
     }
+    SET_ERROR(BEXPR_ERR_INVALID_TOKEN);
     return false;
 }
 
@@ -581,6 +633,7 @@ bool bexpr_tokenize(const char *text)
     text = skip_whitespace(text);
     len  = strlen(text);
 
+    /* make copy of input text */
     expr_text = lib_malloc(len + 1u);
     memcpy(expr_text, text, len + 1u);
 
@@ -594,7 +647,7 @@ bool bexpr_tokenize(const char *text)
         token = token_parse(text, &endptr);
         //printf("%s(): token ID: %d\n", __func__, token);
         if (token == BEXPR_INVALID) {
-            printf("%s(): parse error: invalid token\n", __func__);
+            /* error code already set */
             return false;
         }
         bexpr_add_token(token);
@@ -651,9 +704,9 @@ static bool infix_to_postfix(void)
                     }
                 }
                 /* sanity check: must have a left parenthesis otherwise we
-                 * have mismateched parenthesis */
+                 * have mismatched parenthesis */
                 if (oper1 != BEXPR_LPAREN) {
-                    printf("%s(): error: missing left parenthesis\n", __func__);
+                    SET_ERROR(BEXPR_ERR_EXPECTED_LPAREN);
                     return false;
                 }
 
@@ -672,10 +725,9 @@ static bool infix_to_postfix(void)
 
                     tok1 = token_find(oper1);
                     tok2 = token_find(oper2);
-                    /* this shouldn't happen if the parser is correct and the
-                     * user didn't use bexpr_add_token() to add invalid tokens */
+                    /* sanity check: shouldn't be true if the parser is correct */
                     if (tok1 == NULL || tok2 == NULL) {
-                        printf("%s(): fatal error: not a valid token.\n", __func__);
+                        SET_ERROR(BEXPR_ERR_FATAL);
                         return false;
                     }
 
@@ -704,7 +756,8 @@ static bool infix_to_postfix(void)
                __func__, token_text(oper1), oper1);
 
         if (oper1 == BEXPR_LPAREN) {
-            printf("%s(): unmatched left parenthesis\n", __func__);
+            /* unexpected left parenthesis */
+            SET_ERROR(BEXPR_ERR_UNMATCHED_PARENS);
             return false;
         }
         queue_enqueue(oper1);
@@ -732,6 +785,7 @@ bool bexpr_evaluate(bool *result)
     *result = false;
 
     if (expr_length <= 0) {
+        SET_ERROR(BEXPR_ERR_EMPTY_EXPRESSION);
         return false;
     }
 
@@ -739,6 +793,7 @@ bool bexpr_evaluate(bool *result)
     queue_reset();
 
     if (!infix_to_postfix()) {
+        /* error code already set */
         return false;
     }
 
