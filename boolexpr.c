@@ -252,6 +252,7 @@ static const token_t *token_find(int token)
     return NULL;
 }
 
+#if 0
 static int token_precedence(int token)
 {
     const token_t *t = token_find(token);
@@ -260,7 +261,8 @@ static int token_precedence(int token)
     }
     return BEXPR_INVALID;
 }
-
+#endif
+#if 0
 static int token_associativity(int token)
 {
     const token_t *t = token_find(token);
@@ -269,7 +271,7 @@ static int token_associativity(int token)
     }
     return BEXPR_INVALID;
 }
-
+#endif
 #if 0
 static int token_arity(int token)
 {
@@ -283,13 +285,23 @@ static int token_arity(int token)
 
 /* Operator stack */
 
+/** \brief  Initial size of operator stack */
 #define STACK_INITIAL_SIZE  32u
 
+/** \brief  Array of stack elements */
 static int    *stack_elements;
+
+/** \brief  Number of allocated elements for the stack */
 static size_t  stack_size;
+
+/** \brief  Index in the stack of the top element
+ *
+ * This will be -1 to indicate the stack is empty.
+ */
 static int     stack_index;
 
 
+/** \brief  Initialize operator stack */
 static void stack_init(void)
 {
     stack_size     = STACK_INITIAL_SIZE;
@@ -297,11 +309,16 @@ static void stack_init(void)
     stack_index    = -1;    /* stack is empty */
 }
 
+/** \brief  Reset operator stack for resuse */
 static void stack_reset(void)
 {
     stack_index = -1;
 }
 
+/** \brief  Push operator onto stack
+ *
+ * \param[in]   token   token ID of operator
+ */
 static void stack_push(int token)
 {
     stack_index++;
@@ -313,6 +330,10 @@ static void stack_push(int token)
     stack_elements[stack_index] = token;
 }
 
+/** \brief  Pull operator from stack
+ *
+ * \return  token ID of operator or \c BEXPR_INVALID if stack is empty
+ */
 static int stack_pull(void)
 {
     if (stack_index < 0) {
@@ -323,16 +344,27 @@ static int stack_pull(void)
     }
 }
 
+/** \brief  Peek at top of stack
+ *
+ * Get token ID at top of stack but don't pull it from stack.
+ *
+ * \return  token ID of operator or \c BEXPR_INVALID if stack is empty
+ */
 static int stack_peek(void)
 {
     return stack_index < 0 ? BEXPR_INVALID : stack_elements[stack_index];
 }
 
+/** \brief  Check if stack is empty
+ *
+ * \return \c true is stack is empty
+ */
 static bool stack_is_empty(void)
 {
     return stack_index < 0;
 }
 
+/** \brief  Free memory used by operator stack */
 static void stack_free(void)
 {
     lib_free(stack_elements);
@@ -538,36 +570,59 @@ static bool infix_to_postfix(void)
         printf("%s(): token: '%s':\n",  __func__, token_text(token));
 
         if (is_operand(token)) {
+            /* operands are added unconditionally to the output queue */
             queue_enqueue(token);
         } else {
-            if (token == BEXPR_LPAREN) {
-                stack_push(token);
+            /* handle operators */
+            oper1 = token;
+
+            if (oper1 == BEXPR_LPAREN) {
+                /* left parenthesis: onto the operator stack */
+                stack_push(oper1);
             } else if (token == BEXPR_RPAREN) {
+                /* right parenthesis: while there's an operator on the stack
+                 * and it's not a left parenthesis: pull from stack and add to
+                 * the output queue */
                 while (!stack_is_empty()) {
                     oper1 = stack_pull();
                     if (oper1 != BEXPR_LPAREN) {
                         queue_enqueue(oper1);
                     }
                 }
-            } else {
-                oper1 = token;
+                /* sanity check: must have a left parenthesis otherwise we
+                 * have mismateched parenthesis */
+                if (oper1 != BEXPR_LPAREN) {
+                    printf("%s(): error: missing left parenthesis\n", __func__);
+                    return false;
+                }
 
+            } else {
+                /* handle operator until a left parenthesis is on top of the
+                 * operator stack */
                 while (!stack_is_empty()) {
+                    const token_t *tok1;
+                    const token_t *tok2;
+
+                    /* check for left parenthesis */
                     oper2 = stack_peek();
                     if (oper2 == BEXPR_LPAREN) {
                         break;
                     }
 
-                    /* TODO: These lookups can be replace with token struct
-                     *       lookups and getting their members, reducing the
-                     *       number of lookups required.
-                     */
-                    prec1  = token_precedence(oper1);
-                    prec2  = token_precedence(oper2);
-                    assoc1 = token_associativity(oper1);
-                    if ((prec2 > prec1) ||
-                            ((prec2 == prec1) && assoc1 == BEXPR_LTR)) {
+                    tok1 = token_find(oper1);
+                    tok2 = token_find(oper2);
+                    /* this shouldn't happen if the parser is correct and the
+                     * user didn't use bexpr_add_token() to add invalid tokens */
+                    if (tok1 == NULL || tok2 == NULL) {
+                        printf("%s(): fatal error: not a valid token.\n", __func__);
+                        return false;
+                    }
 
+                    prec1  = tok1->precedence;
+                    prec2  = tok2->precedence;
+                    assoc1 = tok1->associativity;
+
+                    if ((prec2 > prec1) || ((prec2 == prec1) && assoc1 == BEXPR_LTR)) {
                         oper2 = stack_pull();
                         queue_enqueue(oper2);
                     } else {
