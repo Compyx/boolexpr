@@ -110,11 +110,11 @@ static const token_t token_list[] = {
     { "0",      BEXPR_FALSE,    0,                  0,              0 },
     { "true",   BEXPR_TRUE,     0,                  0,              0 },
     { "1",      BEXPR_TRUE,     0,                  0,              0 },
-    { "(",      BEXPR_LPAREN,   0,                  BEXPR_LTR,  1 },
-    { ")",      BEXPR_RPAREN,   0,                  BEXPR_LTR,  1 },
-    { "!",      BEXPR_NOT,      BEXPR_UNARY,    BEXPR_RTL,  2 },
-    { "&&",     BEXPR_AND,      BEXPR_BINARY,   BEXPR_LTR,  3 },
-    { "||",     BEXPR_OR,       BEXPR_BINARY,   BEXPR_LTR,  4 }
+    { "(",      BEXPR_LPAREN,   0,                  BEXPR_LTR,      4 },
+    { ")",      BEXPR_RPAREN,   0,                  BEXPR_LTR,      4 },
+    { "!",      BEXPR_NOT,      BEXPR_UNARY,        BEXPR_RTL,      3 },
+    { "&&",     BEXPR_AND,      BEXPR_BINARY,       BEXPR_LTR,      2 },
+    { "||",     BEXPR_OR,       BEXPR_BINARY,       BEXPR_LTR,      1 }
 };
 
 /** \brief  Valid characters in a token's text */
@@ -255,12 +255,31 @@ static const token_t *token_find(int token)
 static int token_precedence(int token)
 {
     const token_t *t = token_find(token);
-
     if (t != NULL) {
         return t->precedence;
     }
     return BEXPR_INVALID;
 }
+
+static int token_associativity(int token)
+{
+    const token_t *t = token_find(token);
+    if (t != NULL) {
+        return t->associativity;
+    }
+    return BEXPR_INVALID;
+}
+
+#if 0
+static int token_arity(int token)
+{
+    const token_t *t = token_find(token);
+    if (t != NULL) {
+        return t->arity;
+    }
+    return BEXPR_INVALID;
+}
+#endif
 
 /* Operator stack */
 
@@ -499,6 +518,7 @@ bool bexpr_evaluate(bool *result)
     int oper2;
     int prec1;
     int prec2;
+    int assoc1;
 
     if (expr_length <= 0) {
         *result = false;
@@ -541,9 +561,17 @@ bool bexpr_evaluate(bool *result)
                     if (oper2 == BEXPR_LPAREN) {
                         break;
                     }
-                    prec1 = token_precedence(oper1);
-                    prec2 = token_precedence(oper2);
-                    if (prec2 > prec1) {
+
+                    /* TODO: These lookups can be replace with token struct
+                     *       lookups and getting their members, reducing the
+                     *       number of lookups required.
+                     */
+                    prec1  = token_precedence(oper1);
+                    prec2  = token_precedence(oper2);
+                    assoc1 = token_associativity(oper1);
+                    if ((prec2 > prec1) ||
+                            ((prec2 == prec1) && assoc1 == BEXPR_LTR)) {
+
                         oper2 = stack_pull();
                         queue_enqueue(oper2);
                     } else {
