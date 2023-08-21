@@ -370,6 +370,10 @@ static void stack_free(void)
     lib_free(stack_elements);
 }
 
+/** \brief  Print operator stack on stdout
+ *
+ * \note    Doesn't add a newline
+ */
 static void stack_print(void)
 {
     putchar('[');
@@ -385,13 +389,25 @@ static void stack_print(void)
 }
 
 
+/* Output queue */
+
+/** \brief  Initial number of queue elements to allocate */
 #define QUEUE_INITIAL_SIZE 32
 
+/** \brief  Output queue elements */
 static int    *queue_elements;
+
+/** \brief  Number of allocated queue elements */
 static size_t  queue_size;
+
+/** \brief  Index in queue of last element
+ *
+ * An index of -1 means the queue is empty.
+ */
 static int     queue_index;
 
 
+/** \brief  Initialize ouput queue */
 static void queue_init(void)
 {
     queue_size     = QUEUE_INITIAL_SIZE;
@@ -399,11 +415,16 @@ static void queue_init(void)
     queue_index    = -1;
 }
 
+/** \brief  Reset output queue for reuse */
 static void queue_reset(void)
 {
     queue_index = -1;
 }
 
+/** \brief  Print output queue on stdout
+ *
+ * \note    Doesn't print a newline
+ */
 static void queue_print(void)
 {
     putchar('[');
@@ -418,11 +439,16 @@ static void queue_print(void)
     putchar(']');
 }
 
+/** \brief  Free memory used by output queue */
 static void queue_free(void)
 {
     lib_free(queue_elements);
 }
 
+/** \brief  Add token to the output queue
+ *
+ * \param[in]   token   token ID
+ */
 static void queue_enqueue(int token)
 {
     queue_index++;
@@ -435,6 +461,10 @@ static void queue_enqueue(int token)
 }
 
 #if 0
+/** \brief  Get token from front of queue
+ *
+ * \return  token ID or \c BEXPR_INVALID if the queue is empty
+ */
 static int queue_dequeue(void)
 {
     int token;
@@ -486,6 +516,7 @@ void bexpr_print(void)
     }
     putchar('\n');
 }
+
 
 void bexpr_free(void)
 {
