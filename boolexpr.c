@@ -196,7 +196,6 @@ static const char *skip_whitespace(const char *s)
 static int token_parse(const char *text, const char **endptr)
 {
     const char *pos;
-    char        token[MAX_TOKEN_LEN + 1];
     size_t      tlen;
 
     pos = text = skip_whitespace(text);
@@ -210,19 +209,16 @@ static int token_parse(const char *text, const char **endptr)
         return BEXPR_INVALID;
     }
 
-    memset(token, 0, sizeof token);
     tlen = (size_t)(pos - text);
     if (tlen > MAX_TOKEN_LEN) {
         tlen = MAX_TOKEN_LEN;
     }
-    strncpy(token, text, tlen);
     //printf("%s(): testing token '%s'\n", __func__, token);
 
     /* look up token, reducing size (greedy matching) each time */
     while (tlen >= 1) {
-
         for (size_t i = 0; i < ARRAY_LEN(token_list); i++) {
-            if (strncmp(token_list[i].text, token, tlen) == 0) {
+            if (strncmp(token_list[i].text, text, tlen) == 0) {
                 if (endptr != NULL) {
                     *endptr = text + tlen;
                 }
