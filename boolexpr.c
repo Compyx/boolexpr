@@ -178,10 +178,6 @@ static const char *skip_whitespace(const char *s)
     return s;
 }
 
-
-
-
-
 /** \brief  Parse text for a valid token
  *
  * Parse \a text looking for a valid token text, and if found return the ID.
@@ -485,6 +481,10 @@ static int queue_dequeue(void)
 #endif
 
 
+/** \brief  Initialize expression for use
+ *
+ * Allocate memory for tokenizer and evaluator.
+ */
 void bexpr_init(void)
 {
     expr_text   = NULL;
@@ -496,6 +496,15 @@ void bexpr_init(void)
 }
 
 
+/** \brief  Reset tokenizer and evaluator for new expression
+ *
+ * Reset internal data structures for new expression, without freeing and then
+ * allocating resources again.
+ *
+ * If using this module multiple times during the lifetime of a program (which
+ * is likely), do not call bexpr_free() followed by bexpr_init() when having to
+ * handle another expression, but call this function instead.
+ */
 void bexpr_reset(void)
 {
     lib_free(expr_text);
@@ -506,6 +515,7 @@ void bexpr_reset(void)
 }
 
 
+/** \brief  Print tokenized expression on stdout */
 void bexpr_print(void)
 {
     for (size_t i = 0; i < expr_length; i++) {
@@ -518,6 +528,11 @@ void bexpr_print(void)
 }
 
 
+/** \brief  Free memory used by expression
+ *
+ * Free all memory used by the expression, including the operator stack and the
+ * output queue.
+ */
 void bexpr_free(void)
 {
     lib_free(expr_tokens);
@@ -527,6 +542,12 @@ void bexpr_free(void)
 }
 
 
+/** \brief  Add token to expression
+ *
+ * \param[in]   token   token ID
+ *
+ * \return  \c false if \a token is invalid
+ */
 bool bexpr_add_token(int token)
 {
     if (is_valid_token(token)) {
@@ -544,6 +565,15 @@ bool bexpr_add_token(int token)
 }
 
 
+/** \brief  Generate expression from a string
+ *
+ * Parse \a text and tokenize into an expression. There is no syntax checking
+ * performed, only splitting the \a text into tokens for the evaluator.
+ *
+ * \param[in]   text    string to tokenize
+ *
+ * \return  \c true on success
+ */
 bool bexpr_tokenize(const char *text)
 {
     size_t len;
