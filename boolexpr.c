@@ -293,55 +293,105 @@ static const token_t *token_get(int id)
 }
 
 
-/* Dynamic token list, implements stack and queue operations */
+/* Dynamic token list, implements list, stack, and queue operations as required
+ * by the rest of the code
+ */
 
+/** \brief  Token list object
+ */
 typedef struct token_list_s {
     const token_t **tokens; /**< array of token info pointers */
     size_t          size;   /**< size of \c tokens */
     int             index;  /**< index in \c tokens, -1 means list is empty */
 } token_list_t;
 
+/** \brief  Initializer for a token list */
 #define TLIST_INIT { .tokens = NULL, .size = 0, .index = -1 }
 
+/** \brief  Initial number of available tokens in a token list */
+#define TLIST_INITIAL_SIZE  32u
+
+
+/** \brief  Initialize token list for use
+ *
+ * Initialize \a list by allocating space for \c TLIST_INITIAL_SIZE tokens and
+ * marking the \a list empty.
+ *
+ * \param[in]   list    token list
+ */
 static void token_list_init(token_list_t *list)
 {
-    list->size   = 32u;
+    list->size   = TLIST_INITIAL_SIZE;
     list->index  = -1;
     list->tokens = lib_malloc(sizeof *(list->tokens) * list->size);
-    for (size_t i = 0; i < list->size; i++) {
-        list->tokens[i] = NULL;
-    }
 }
 
+/** \brief  Reset token list for reuse
+ *
+ * Reset \a list for reuse by marking it empty, without freeing the token array.
+ * To properly free a token list, use token_list_free().
+ *
+ * \param[in]   list    token list
+ */
 static void token_list_reset(token_list_t *list)
 {
     list->index = -1;
 }
 
+/** \brief  Resize token array if required
+ *
+ * Double the size of the token array if it's full.
+ *
+ * \param[in]   list    token list
+ */
 static void token_list_resize_maybe(token_list_t *list)
 {
     if ((size_t)(list->index + 1) == list->size) {
         list->size  *= 2;
-        list->tokens = lib_realloc(list->tokens,
-                                   sizeof *(list->tokens) * list->size);
+        list->tokens = lib_realloc(list->tokens, sizeof *(list->tokens) * list->size);
     }
 }
 
+/** \brief  Free memory used by token list
+ *
+ * Free memory used by the \a list's token array.
+ */
 static void token_list_free(token_list_t *list)
 {
     lib_free(list->tokens);
 }
 
+/** \brief  Get length of token list
+ *
+ * Get number of tokens in \a list.
+ *
+ * \param[in]   list    token list
+ *
+ * \return  length of \a list
+ */
 static int token_list_length(const token_list_t *list)
 {
     return list->index + 1;
 }
 
+/** \brief  Determine if token list is empty
+ *
+ * \param[in]   list    token list
+ *
+ * \return  \c true if \a list is empty
+ */
 static bool token_list_is_empty(const token_list_t *list)
 {
     return (bool)(list->index < 0);
 }
 
+/** \brief  Print token list on stdout
+ *
+ * Print the text of each token in \a list separated by commas. Does not print
+ * a newline so the output can be used "inline" with other output.
+ *
+ * \param[in]   list    token list
+ */
 static void token_list_print(const token_list_t *list)
 {
     int index;
@@ -357,12 +407,28 @@ static void token_list_print(const token_list_t *list)
     putchar(']');
 }
 
+/** \brief  Push token onto end of list
+ *
+ * Push \a token onto end of \a list, treating \a list like a stack.
+ *
+ * \param[in]   list    token list
+ * \param[in]   token   token
+ */
 static void token_list_push(token_list_t *list, const token_t *token)
 {
     token_list_resize_maybe(list);
     list->tokens[++list->index] = token;
 }
 
+/** \brief  Push token by its ID onto end of list
+ *
+ * Push token onto end of \a list, treating \a list like a stack.
+ *
+ * \param[in]   list    token list
+ * \param[in]   id      token ID
+ *
+ * \return  \c false if \a id is invalid
+ */
 static bool token_list_push_id(token_list_t *list, int id)
 {
     const token_t *token = token_get(id);
@@ -373,8 +439,23 @@ static bool token_list_push_id(token_list_t *list, int id)
     return false;
 }
 
-#define token_list_enqueue(list, id) token_list_push(list, id)
+/** \brief  Enqueue token onto? token list
+ *
+ * Enqueue \a token onto \a list, treating \a list as a queue.
+ *
+ * \param[in]   list    token list
+ * \param[in]   token   token
+ */
+#define token_list_enqueue(list, token) token_list_push(list, token)
 
+/** \brief  Peek at the end of the list
+ *
+ * Get token at the tail of \a list without removing it.
+ *
+ * \param[in]   list    toke list
+ *
+ * \return  token or \c NULL if \a list is empty
+ */
 static const token_t *token_list_peek(const token_list_t *list)
 {
     if (list->index >= 0) {
@@ -384,6 +465,14 @@ static const token_t *token_list_peek(const token_list_t *list)
     }
 }
 
+/** \brief  Pull token from end of list
+ *
+ * Get item from end of \a list and remove it, treating \a list as a stack.
+ *
+ * \param[in]   list    token list
+ *
+ * \return  token or \c NULL if \a list is empty
+ */
 static const token_t *token_list_pull(token_list_t *list)
 {
     if (list->index >= 0) {
@@ -392,9 +481,17 @@ static const token_t *token_list_pull(token_list_t *list)
     return NULL;
 }
 
+/** \brief  Get token at index without removing it
+ *
+ * \param[in]   list    token list
+ * \param[in]   index   index in \a list
+ *
+ * \return  token or \c NULL if \a index is out of bounds
+ */
 static const token_t* token_list_token_at(const token_list_t *list, int index)
 {
-    if (index < 0 || index >= (int)list->size) {
+    /* list->index is the index of the last item */
+    if (index < 0 || index > list->index) {
         return NULL;
     }
     return list->tokens[index];
