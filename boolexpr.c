@@ -13,6 +13,57 @@
  */
 #define ARRAY_LEN(arr)  (sizeof arr / sizeof arr[0])
 
+/** \brief  Set error code (and for now print error code and message on stderr
+ *
+ * \param[in]   errnum  error code
+ */
+#define SET_ERROR(errnum) \
+    bexpr_errno = errnum; \
+    fprintf(stderr, "%s(): error %d: %s\n", __func__, errnum, bexpr_strerror(errnum));
+
+enum {
+    BEXPR_LTR,  /**< left-to-right associativity */
+    BEXPR_RTL,  /**< right-to-left associativity */
+};
+
+enum {
+    BEXPR_UNARY  = 1,   /**< unary operator */
+    BEXPR_BINARY = 2    /**< binary operator */
+};
+
+/** \brief  Token specification
+ */
+typedef struct token_s {
+    const char *text;           /**< text */
+    int         token;          /**< ID */
+    int         arity;          /**< operator arity */
+    int         associativity;  /**< operator associativity */
+    int         precedence;     /**< operator precedence */
+} token_t;
+
+/** \brief  Maximum lenght of a token's text */
+#define MAX_TOKEN_LEN   5
+
+/** \brief  List of valid tokens
+ *
+ * Contains both operators and operands.
+ */
+static const token_t token_list[] = {
+    { "false",  BEXPR_FALSE,    0,                  0,              0 },
+    { "0",      BEXPR_FALSE,    0,                  0,              0 },
+    { "true",   BEXPR_TRUE,     0,                  0,              0 },
+    { "1",      BEXPR_TRUE,     0,                  0,              0 },
+    { "(",      BEXPR_LPAREN,   0,                  BEXPR_LTR,      4 },
+    { ")",      BEXPR_RPAREN,   0,                  BEXPR_LTR,      4 },
+    { "!",      BEXPR_NOT,      BEXPR_UNARY,        BEXPR_RTL,      3 },
+    { "&&",     BEXPR_AND,      BEXPR_BINARY,       BEXPR_LTR,      2 },
+    { "||",     BEXPR_OR,       BEXPR_BINARY,       BEXPR_LTR,      1 }
+};
+
+/** \brief  Valid characters in a token's text */
+static const int token_chars[] = {
+    '(', ')', '!', '&', '|', '0', '1', 'a', 'e', 'f', 'l', 'r', 's', 't', 'u'
+};
 
 /** \brief  Error messages */
 static const char *error_messages[] = {
@@ -47,12 +98,9 @@ const char *bexpr_strerror(int errnum)
 }
 
 
-
-
-/* Memory management: reimplementation of VICE's lib_foo() functions */
+/* {{{ Memory management: reimplementation of VICE's lib_foo() functions */
 
 static void lib_free(void *ptr);
-
 
 static void *lib_malloc(size_t size)
 {
@@ -107,61 +155,23 @@ static void lib_free(void *ptr)
 {
     free(ptr);
 }
+/* }}} */
 
-
-enum {
-    BEXPR_LTR,  /**< left-to-right associativity */
-    BEXPR_RTL,  /**< right-to-left associativity */
-};
-
-enum {
-    BEXPR_UNARY  = 1,   /**< unary operator */
-    BEXPR_BINARY = 2    /**< binary operator */
-};
-
-/** \brief  Token specification
- */
-typedef struct token_s {
-    const char *text;           /**< text */
-    int         token;          /**< ID */
-    int         arity;          /**< operator arity */
-    int         associativity;  /**< operator associativity */
-    int         precedence;     /**< operator precedence */
-} token_t;
-
-/** \brief  Maximum lenght of a token's text */
-#define MAX_TOKEN_LEN   5
-
-/** \brief  List of valid tokens
+/* {{{ Token handling */
+/** \brief  Skip whitespace in string
  *
- * Contains both operators and operands.
- */
-static const token_t token_list[] = {
-    { "false",  BEXPR_FALSE,    0,                  0,              0 },
-    { "0",      BEXPR_FALSE,    0,                  0,              0 },
-    { "true",   BEXPR_TRUE,     0,                  0,              0 },
-    { "1",      BEXPR_TRUE,     0,                  0,              0 },
-    { "(",      BEXPR_LPAREN,   0,                  BEXPR_LTR,      4 },
-    { ")",      BEXPR_RPAREN,   0,                  BEXPR_LTR,      4 },
-    { "!",      BEXPR_NOT,      BEXPR_UNARY,        BEXPR_RTL,      3 },
-    { "&&",     BEXPR_AND,      BEXPR_BINARY,       BEXPR_LTR,      2 },
-    { "||",     BEXPR_OR,       BEXPR_BINARY,       BEXPR_LTR,      1 }
-};
-
-/** \brief  Valid characters in a token's text */
-static const int token_chars[] = {
-    '(', ')', '!', '&', '|', '0', '1', 'a', 'e', 'f', 'l', 'r', 's', 't', 'u'
-};
-
-
-/** \brief  Set error code (and for now print error code and message on stderr
+ * \param[in]   s   string
  *
- * \param[in]   errnum  error code
+ * \return  pointer to first non-whitepace character (can be the terminating
+ *          nul character if \a s consists of only whitespace)
  */
-#define SET_ERROR(errnum) \
-    bexpr_errno = errnum; \
-    fprintf(stderr, "%s(): error %d: %s\n", __func__, errnum, bexpr_strerror(errnum));
-
+static const char *skip_whitespace(const char *s)
+{
+    while (*s != '\0' && isspace((unsigned char)*s)) {
+        s++;
+    }
+    return s;
+}
 
 /** \brief  Determine if a character is a valid token text character
  *
@@ -198,25 +208,16 @@ static bool is_operator(int token)
 }
 #endif
 
+/** \brief  Determine if a token is an operand
+ *
+ * \param[in]   token   token ID
+ *
+ * \return  \c true if \a token is an operand
+ */
 static bool is_operand(int token)
 {
     return (is_valid_token(token)) &&
            ((token == BEXPR_FALSE) || (token == BEXPR_TRUE));
-}
-
-/** \brief  Skip whitespace in string
- *
- * \param[in]   s   string
- *
- * \return  pointer to first non-whitepace character (can be the terminating
- *          nul character if \a s consists of only whitespace)
- */
-static const char *skip_whitespace(const char *s)
-{
-    while (*s != '\0' && isspace((unsigned char)*s)) {
-        s++;
-    }
-    return s;
 }
 
 /** \brief  Parse text for a valid token
@@ -271,6 +272,12 @@ static int token_parse(const char *text, const char **endptr)
     return BEXPR_INVALID;
 }
 
+/** \brief  Get string representing token
+ *
+ * \param[in]   token   token ID
+ *
+ * \return  token text
+ */
 static const char *token_text(int token)
 {
     if (is_valid_token(token)) {
@@ -283,11 +290,19 @@ static const char *token_text(int token)
     return "<invalid>";
 }
 
+/** \brief  Look up token in token list
+ *
+ * \param[in]   token   token ID
+ *
+ * \return  token list element or \c NULL when not found
+ */
 static const token_t *token_find(int token)
 {
-    for (size_t i = 0; ARRAY_LEN(token_list); i++) {
-        if (token_list[i].token == token) {
-            return &token_list[i];
+    if (is_valid_token(token)) {
+        for (size_t i = 0; ARRAY_LEN(token_list); i++) {
+            if (token_list[i].token == token) {
+                return &token_list[i];
+            }
         }
     }
     return NULL;
@@ -324,8 +339,9 @@ static int token_arity(int token)
 }
 #endif
 
-/* Operator stack */
+/* }}} */
 
+/* {{{ Operator stack */
 /** \brief  Initial size of operator stack */
 #define STACK_INITIAL_SIZE  32u
 
@@ -428,10 +444,9 @@ static void stack_print(void)
     }
     putchar(']');
 }
+/* }}} */
 
-
-/* Output queue */
-
+/* {{{ Output queue */
 /** \brief  Initial number of queue elements to allocate */
 #define QUEUE_INITIAL_SIZE 32
 
@@ -524,11 +539,19 @@ static int queue_dequeue(void)
     return token;
 }
 #endif
+/* }}} */
 
 
+/** \brief  Copy of text fed to tokenizer */
 static char   *expr_text;
+
+/** \brief  List of tokens making up the infix expression */
 static int    *expr_tokens;
+
+/** \brief  Length of expression */
 static size_t  expr_length;
+
+/** \brief  Number of tokens allocated */
 static size_t  expr_avail;
 
 
