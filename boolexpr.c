@@ -341,40 +341,42 @@ static int token_arity(int token)
 
 /* }}} */
 
-/* {{{ Operator stack */
-/** \brief  Initial size of operator stack */
+/* {{{ Token stack */
+/** \brief  Initial size of token stack */
 #define STACK_INITIAL_SIZE  32u
 
 /** \brief  Array of stack elements */
-static int    *stack_elements;
+static int    *stack_elements = NULL;
 
 /** \brief  Number of allocated elements for the stack */
-static size_t  stack_size;
+static size_t  stack_size = 0;
 
 /** \brief  Index in the stack of the top element
  *
  * This will be -1 to indicate the stack is empty.
  */
-static int     stack_index;
+static int     stack_index = -1;
 
 
-/** \brief  Initialize operator stack */
+/** \brief  Initialize token stack
+ *
+ * (Re)initialize stack for use. When called the first time this will allocate
+ * memory for a number of elements, which will grow when required. On subsequent
+ * calls the stack pointer will be reset but the allocated elements kept intact
+ * for reuse.
+ */
 static void stack_init(void)
 {
-    stack_size     = STACK_INITIAL_SIZE;
-    stack_elements = lib_malloc(sizeof *stack_elements * stack_size);
+    if (stack_elements == NULL) {
+        stack_size     = STACK_INITIAL_SIZE;
+        stack_elements = lib_malloc(sizeof *stack_elements * stack_size);
+    }
     stack_index    = -1;    /* stack is empty */
 }
 
-/** \brief  Reset operator stack for resuse */
-static void stack_reset(void)
-{
-    stack_index = -1;
-}
-
-/** \brief  Push operator onto stack
+/** \brief  Push token onto stack
  *
- * \param[in]   token   token ID of operator
+ * \param[in]   token   token ID
  */
 static void stack_push(int token)
 {
@@ -387,9 +389,9 @@ static void stack_push(int token)
     stack_elements[stack_index] = token;
 }
 
-/** \brief  Pull operator from stack
+/** \brief  Pull token from stack
  *
- * \return  token ID of operator or \c BEXPR_INVALID if stack is empty
+ * \return  token ID or \c BEXPR_INVALID if stack is empty
  */
 static int stack_pull(void)
 {
@@ -405,7 +407,7 @@ static int stack_pull(void)
  *
  * Get token ID at top of stack but don't pull it from stack.
  *
- * \return  token ID of operator or \c BEXPR_INVALID if stack is empty
+ * \return  token ID or \c BEXPR_INVALID if stack is empty
  */
 static int stack_peek(void)
 {
@@ -421,15 +423,17 @@ static bool stack_is_empty(void)
     return stack_index < 0;
 }
 
-/** \brief  Free memory used by operator stack */
+/** \brief  Free memory used by token stack */
 static void stack_free(void)
 {
     lib_free(stack_elements);
+    stack_elements = NULL;
 }
 
-/** \brief  Print operator stack on stdout
+/** \brief  Print token stack on stdout
  *
- * \note    Doesn't add a newline
+ * \note    Doesn't add a newline so the user can print additional data after
+ *          the stack on the same line.
  */
 static void stack_print(void)
 {
@@ -451,30 +455,32 @@ static void stack_print(void)
 #define QUEUE_INITIAL_SIZE 32
 
 /** \brief  Output queue elements */
-static int    *queue_elements;
+static int    *queue_elements = NULL;
 
 /** \brief  Number of allocated queue elements */
-static size_t  queue_size;
+static size_t  queue_size = 0;
 
 /** \brief  Index in queue of last element
  *
  * An index of -1 means the queue is empty.
  */
-static int     queue_index;
+static int     queue_index = -1;
 
 
-/** \brief  Initialize ouput queue */
+/** \brief  Initialize ouput queue
+ *
+ * (Re)initialize queue for use. When called the first time this will allocate
+ * memory for a number of elements, which will grow when required. On subsequent
+ * calls the tail pointer will be reset but the allocated elements kept intact
+ * for reuse.
+ */
 static void queue_init(void)
 {
-    queue_size     = QUEUE_INITIAL_SIZE;
-    queue_elements = lib_malloc(sizeof *queue_elements * queue_size);
+    if (queue_elements == NULL) {
+        queue_size     = QUEUE_INITIAL_SIZE;
+        queue_elements = lib_malloc(sizeof *queue_elements * queue_size);
+    }
     queue_index    = -1;
-}
-
-/** \brief  Reset output queue for reuse */
-static void queue_reset(void)
-{
-    queue_index = -1;
 }
 
 /** \brief  Print output queue on stdout
@@ -499,6 +505,7 @@ static void queue_print(void)
 static void queue_free(void)
 {
     lib_free(queue_elements);
+    queue_elements = NULL;
 }
 
 /** \brief  Add token to the output queue
@@ -584,8 +591,8 @@ void bexpr_reset(void)
     lib_free(expr_text);
     expr_text   = NULL;
     expr_length = 0;
-    stack_reset();
-    queue_reset();
+    stack_init();
+    queue_init();
 }
 
 
@@ -794,6 +801,13 @@ static bool infix_to_postfix(void)
 }
 
 
+static bool eval_postfix(bool *result)
+{
+    *result = true;
+    return true;
+}
+
+
 /** \brief  Evaluate boolean expression
  *
  * Evaluate boolean expression, either obtained by bexpr_parse() or by adding
@@ -812,14 +826,25 @@ bool bexpr_evaluate(bool *result)
         return false;
     }
 
-    stack_reset();
-    queue_reset();
+    /* reset stack for use as operand stack */
+    stack_init();
+    /* reset output queue */
+    queue_init();
 
+    /* convert infix expression to postfix expression */
     if (!infix_to_postfix()) {
         /* error code already set */
         return false;
     }
 
-    *result = true;
+    /* reset stack for use as operand stack */
+    stack_init();
+
+    /* try to evaluate the postfix expression in the queue */
+    if (!eval_postfix(result)) {
+        /* error code already set */
+        return false;
+    }
+
     return true;
 }
