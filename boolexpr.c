@@ -518,6 +518,9 @@ static int queue_dequeue(void)
 /* }}} */
 
 
+#define TLIST_INIT { .tokens = NULL, .size = 0, .index = -1 }
+
+
 /* Dynamic token list, implements stack and queue operations */
 
 typedef struct token_list_s {
@@ -526,7 +529,7 @@ typedef struct token_list_s {
     int             index;  /**< index in \c tokens, -1 means list is empty */
 } token_list_t;
 
-#if 0
+
 static void token_list_init(token_list_t *list)
 {
     list->size   = 32u;
@@ -536,12 +539,65 @@ static void token_list_init(token_list_t *list)
         list->tokens[i] = NULL;
     }
 }
-#endif
+
+static void token_list_reset(token_list_t *list)
+{
+    list->index = -1;
+}
+
+static void token_list_resize(token_list_t *list)
+{
+    if ((size_t)(list->index + 1) == list->size) {
+        list->size  *= 2;
+        list->tokens = lib_realloc(list->tokens,
+                                   sizeof *(list->tokens) * list->size);
+    }
+}
+
+static void token_list_free(token_list_t *list)
+{
+    lib_free(list->tokens);
+}
+
+static int token_list_length(token_list_t *list)
+{
+    return list->index + 1;
+}
+
+static bool token_list_push(token_list_t *list, int id)
+{
+    const token_t *token = token_get(id);
+    if (token != NULL) {
+        token_list_resize(list);
+        list->tokens[++list->index] = token;
+        return true;
+    }
+    return false;
+}
+
+#define token_list_enqueue(list, id) token_list_push(list, id)
+
+static const token_t *token_list_pop(token_list_t *list)
+{
+    if (list->index >= 0) {
+        return list->tokens[--list->index];
+    }
+    return NULL;
+}
+
+static const token_t* token_list_token_at(token_list_t *list, int index)
+{
+    if (index < 0 || index >= (int)list->size) {
+        return NULL;
+    }
+    return list->tokens[index];
+}
 
 
 /** \brief  Copy of text fed to tokenizer */
 static char   *expr_text;
 
+#if 0
 /** \brief  List of tokens making up the infix expression */
 static int    *expr_tokens;
 
@@ -550,6 +606,11 @@ static size_t  expr_length;
 
 /** \brief  Number of tokens allocated */
 static size_t  expr_avail;
+#endif
+
+static token_list_t expr_tokens = TLIST_INIT;
+static token_list_t token_stack = TLIST_INIT;
+static token_list_t token_queue = TLIST_INIT;
 
 
 /** \brief  Initialize expression for use
@@ -558,12 +619,17 @@ static size_t  expr_avail;
  */
 void bexpr_init(void)
 {
-    expr_text   = NULL;
-    expr_length = 0;
-    expr_avail  = 32;
-    expr_tokens = lib_malloc(sizeof *expr_tokens * expr_avail);
+    token_list_init(&expr_tokens);
+    token_list_init(&token_stack);
+    token_list_init(&token_queue);
+
+    expr_text  = NULL;
+//    expr_length = 0;
+//    expr_avail  = 32;
+//    expr_tokens = lib_malloc(sizeof *expr_tokens * expr_avail);
     stack_init();
     queue_init();
+
 }
 
 
@@ -579,8 +645,10 @@ void bexpr_init(void)
 void bexpr_reset(void)
 {
     lib_free(expr_text);
-    expr_text   = NULL;
-    expr_length = 0;
+    expr_text  = NULL;
+    token_list_reset(&expr_tokens);
+    token_list_reset(&token_stack);
+    token_list_reset(&token_queue);
     stack_init();
     queue_init();
 }
@@ -589,9 +657,14 @@ void bexpr_reset(void)
 /** \brief  Print tokenized expression on stdout */
 void bexpr_print(void)
 {
-    for (size_t i = 0; i < expr_length; i++) {
-        printf("'%s'", token_text(expr_tokens[i]));
-        if (i < expr_length - 1u) {
+    int index;
+    int length = token_list_length(&expr_tokens);
+
+    for (index = 0; index < length; index++) {
+        const token_t *token = token_list_token_at(&expr_tokens, index);
+
+        printf("'%s'", token->text);
+        if (index < length) {
             printf(", ");
         }
     }
@@ -606,7 +679,9 @@ void bexpr_print(void)
  */
 void bexpr_free(void)
 {
-    lib_free(expr_tokens);
+    token_list_free(&expr_tokens);
+    token_list_free(&token_stack);
+    token_list_free(&token_queue);
     lib_free(expr_text);
     stack_free();
     queue_free();
@@ -615,25 +690,18 @@ void bexpr_free(void)
 
 /** \brief  Add token to expression
  *
- * \param[in]   token   token ID
+ * \param[in]   id  token ID
  *
- * \return  \c false if \a token is invalid
+ * \return  \c false if token \a id is invalid
  */
-bool bexpr_add_token(int token)
+bool bexpr_add_token(int id)
 {
-    if (is_valid_token(token)) {
-        /* do we need to resize the tokens array? */
-        if (expr_length == expr_avail) {
-            /* yes */
-            expr_avail *= 2;
-            expr_tokens = lib_realloc(expr_tokens,
-                                      sizeof *expr_tokens * expr_avail);
-        }
-        expr_tokens[expr_length++] = token;
+    if (token_list_push(&expr_tokens, id)) {
         return true;
+    } else {
+        SET_ERROR(BEXPR_ERR_INVALID_TOKEN);
+        return false;
     }
-    SET_ERROR(BEXPR_ERR_INVALID_TOKEN);
-    return false;
 }
 
 
@@ -692,8 +760,8 @@ static bool infix_to_postfix(void)
     int  prec2;
     int  assoc1;
 
-    for (size_t i = 0; i < expr_length; i++) {
-        int token = expr_tokens[i];
+    for (int i = 0; i < token_list_length(&expr_tokens); i++) {
+        const token_t *token = token_list_token_at(&expr_tokens, i);
 
         printf("\n%s(): stack: ", __func__);
         stack_print();
@@ -701,19 +769,19 @@ static bool infix_to_postfix(void)
         printf("%s(): queue: ", __func__);
         queue_print();
         putchar('\n');
-        printf("%s(): token: '%s':\n",  __func__, token_text(token));
+        printf("%s(): token: '%s':\n",  __func__, token->text);
 
-        if (is_operand(token)) {
+        if (is_operand(token->id)) {
             /* operands are added unconditionally to the output queue */
-            queue_enqueue(token);
+            queue_enqueue(token->id);
         } else {
             /* handle operators */
-            oper1 = token;
+            oper1 = token->id;
 
             if (oper1 == BEXPR_LPAREN) {
                 /* left parenthesis: onto the operator stack */
                 stack_push(oper1);
-            } else if (token == BEXPR_RPAREN) {
+            } else if (oper1 == BEXPR_RPAREN) {
                 /* right parenthesis: while there's an operator on the stack
                  * and it's not a left parenthesis: pull from stack and add to
                  * the output queue */
@@ -811,7 +879,7 @@ bool bexpr_evaluate(bool *result)
 {
     *result = false;
 
-    if (expr_length <= 0) {
+    if (token_list_length(&expr_tokens) <= 0) {
         SET_ERROR(BEXPR_ERR_EMPTY_EXPRESSION);
         return false;
     }
