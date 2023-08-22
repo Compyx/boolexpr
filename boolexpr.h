@@ -1,18 +1,27 @@
+/** \file   boolexpr.h
+ * \brief   Boolean expression evaluation - header
+ *
+ * \author  Bas Wassink <b.wassink@ziggo.nl>
+ */
+
 #ifndef BOOLEXPR_H
 #define BOOLEXPR_H
 
 #include <stdbool.h>
 
-/* Token IDs */
+/* Token IDs
+ *
+ * The values of this enum must match the array indexes in token_info[].
+ */
 enum {
     BEXPR_INVALID = -1, /**< invalid token */
     BEXPR_FALSE,        /**< FALSE constant */
     BEXPR_TRUE,         /**< TRUE constant */
-    BEXPR_AND,          /**< logical AND operator '!'*/
-    BEXPR_OR,           /**< logical OR operator '||' */
-    BEXPR_NOT,          /**< logical NOT operator '&&' */
     BEXPR_LPAREN,       /**< left parenthesis '(' */
-    BEXPR_RPAREN        /**< right parenthesis ')' */
+    BEXPR_RPAREN,       /**< right parenthesis ')' */
+    BEXPR_NOT,          /**< logical NOT operator '&&' */
+    BEXPR_AND,          /**< logical AND operator '!'*/
+    BEXPR_OR            /**< logical OR operator '||' */
 };
 
 /* Error codes */
@@ -41,6 +50,5 @@ void bexpr_print(void);
 bool bexpr_add_token(int token);
 bool bexpr_tokenize (const char *text);
 bool bexpr_evaluate (bool *result);
-
 
 #endif

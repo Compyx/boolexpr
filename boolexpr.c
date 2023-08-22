@@ -1,3 +1,9 @@
+/** \file   boolexpr.c
+ * \brief   Boolean expression evaluation
+ *
+ * \author  Bas Wassink <b.wassink@ziggo.nl>
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -34,11 +40,11 @@ enum {
 /** \brief  Token specification
  */
 typedef struct token_s {
-    const char *text;           /**< text */
-    int         token;          /**< ID */
-    int         arity;          /**< operator arity */
-    int         associativity;  /**< operator associativity */
-    int         precedence;     /**< operator precedence */
+    const char *text;   /**< text */
+    int         id;     /**< ID */
+    int         arity;  /**< operator arity */
+    int         assoc;  /**< operator associativity */
+    int         prec;   /**< operator precedence */
 } token_t;
 
 /** \brief  Maximum lenght of a token's text */
@@ -47,12 +53,12 @@ typedef struct token_s {
 /** \brief  List of valid tokens
  *
  * Contains both operators and operands.
+ *
+ * The \c id members here must match their array index.
  */
-static const token_t token_list[] = {
+static const token_t token_info[] = {
     { "false",  BEXPR_FALSE,    0,                  0,              0 },
-    { "0",      BEXPR_FALSE,    0,                  0,              0 },
     { "true",   BEXPR_TRUE,     0,                  0,              0 },
-    { "1",      BEXPR_TRUE,     0,                  0,              0 },
     { "(",      BEXPR_LPAREN,   0,                  BEXPR_LTR,      4 },
     { ")",      BEXPR_RPAREN,   0,                  BEXPR_LTR,      4 },
     { "!",      BEXPR_NOT,      BEXPR_UNARY,        BEXPR_RTL,      3 },
@@ -191,13 +197,13 @@ static bool is_token_char(int ch)
 
 /** \brief  Determine if token ID is valid
  *
- * \param[in]   token   token ID
+ * \param[in]   id  token ID
  *
  * \return  \c true if valid
  */
-static bool is_valid_token(int token)
+static bool is_valid_token(int id)
 {
-    return token >= BEXPR_FALSE && token <= BEXPR_RPAREN ? true : false;
+    return id >= 0 && id < (int)ARRAY_LEN(token_info);
 }
 
 #if 0
@@ -210,14 +216,14 @@ static bool is_operator(int token)
 
 /** \brief  Determine if a token is an operand
  *
- * \param[in]   token   token ID
+ * \param[in]   id  token ID
  *
- * \return  \c true if \a token is an operand
+ * \return  \c true if token is an operand
  */
-static bool is_operand(int token)
+static bool is_operand(int id)
 {
-    return (is_valid_token(token)) &&
-           ((token == BEXPR_FALSE) || (token == BEXPR_TRUE));
+    return (is_valid_token(id)) &&
+           ((id == BEXPR_FALSE) || (id == BEXPR_TRUE));
 }
 
 /** \brief  Parse text for a valid token
@@ -258,12 +264,12 @@ static int token_parse(const char *text, const char **endptr)
 
     /* look up token, reducing size (greedy matching) each time */
     while (tlen >= 1) {
-        for (size_t i = 0; i < ARRAY_LEN(token_list); i++) {
-            if (strncmp(token_list[i].text, text, tlen) == 0) {
+        for (size_t i = 0; i < ARRAY_LEN(token_info); i++) {
+            if (strncmp(token_info[i].text, text, tlen) == 0) {
                 if (endptr != NULL) {
                     *endptr = text + tlen;
                 }
-                return token_list[i].token;
+                return token_info[i].id;
             }
         }
         tlen--;
@@ -272,72 +278,35 @@ static int token_parse(const char *text, const char **endptr)
     return BEXPR_INVALID;
 }
 
-/** \brief  Get string representing token
+/** \brief  Get pointer to element in token info array
  *
- * \param[in]   token   token ID
+ * \param[in]   id  token ID
  *
- * \return  token text
+ * \return  token info array element or \c NULL when not found
  */
-static const char *token_text(int token)
+static const token_t *token_get(int id)
 {
-    if (is_valid_token(token)) {
-        for (size_t i = 0; i < ARRAY_LEN(token_list); i++) {
-            if (token_list[i].token == token) {
-                return token_list[i].text;
-            }
-        }
-    }
-    return "<invalid>";
-}
-
-/** \brief  Look up token in token list
- *
- * \param[in]   token   token ID
- *
- * \return  token list element or \c NULL when not found
- */
-static const token_t *token_find(int token)
-{
-    if (is_valid_token(token)) {
-        for (size_t i = 0; ARRAY_LEN(token_list); i++) {
-            if (token_list[i].token == token) {
-                return &token_list[i];
-            }
-        }
+    if (is_valid_token(id)) {
+        return &token_info[id];
     }
     return NULL;
 }
 
-#if 0
-static int token_precedence(int token)
+/** \brief  Get string representing token
+ *
+ * \param[in]   id  token ID
+ *
+ * \return  token text
+ */
+static const char *token_text(int id)
 {
-    const token_t *t = token_find(token);
-    if (t != NULL) {
-        return t->precedence;
+    const token_t *token = token_get(id);
+    if (token != NULL) {
+        return token->text;
+    } else {
+        return "<invalid>";
     }
-    return BEXPR_INVALID;
 }
-#endif
-#if 0
-static int token_associativity(int token)
-{
-    const token_t *t = token_find(token);
-    if (t != NULL) {
-        return t->associativity;
-    }
-    return BEXPR_INVALID;
-}
-#endif
-#if 0
-static int token_arity(int token)
-{
-    const token_t *t = token_find(token);
-    if (t != NULL) {
-        return t->arity;
-    }
-    return BEXPR_INVALID;
-}
-#endif
 
 /* }}} */
 
@@ -549,6 +518,27 @@ static int queue_dequeue(void)
 /* }}} */
 
 
+/* Dynamic token list, implements stack and queue operations */
+
+typedef struct token_list_s {
+    const token_t **tokens; /**< array of token info pointers */
+    size_t          size;   /**< size of \c tokens */
+    int             index;  /**< index in \c tokens, -1 means list is empty */
+} token_list_t;
+
+#if 0
+static void token_list_init(token_list_t *list)
+{
+    list->size   = 32u;
+    list->index  = -1;
+    list->tokens = lib_malloc(sizeof *(list->tokens) * list->size);
+    for (size_t i = 0; i < list->size; i++) {
+        list->tokens[i] = NULL;
+    }
+}
+#endif
+
+
 /** \brief  Copy of text fed to tokenizer */
 static char   *expr_text;
 
@@ -753,17 +743,17 @@ static bool infix_to_postfix(void)
                         break;
                     }
 
-                    tok1 = token_find(oper1);
-                    tok2 = token_find(oper2);
+                    tok1 = token_get(oper1);
+                    tok2 = token_get(oper2);
                     /* sanity check: shouldn't be true if the parser is correct */
                     if (tok1 == NULL || tok2 == NULL) {
                         SET_ERROR(BEXPR_ERR_FATAL);
                         return false;
                     }
 
-                    prec1  = tok1->precedence;
-                    prec2  = tok2->precedence;
-                    assoc1 = tok1->associativity;
+                    prec1  = tok1->prec;
+                    prec2  = tok2->prec;
+                    assoc1 = tok1->assoc;
 
                     if ((prec2 > prec1) || ((prec2 == prec1) && assoc1 == BEXPR_LTR)) {
                         oper2 = stack_pull();
