@@ -201,7 +201,7 @@ static bool is_token_char(int ch)
  *
  * \return  \c true if valid
  */
-static bool is_valid_token(int id)
+static bool is_valid_token_id(int id)
 {
     return id >= 0 && id < (int)ARRAY_LEN(token_info);
 }
@@ -222,7 +222,7 @@ static bool is_operator(int token)
  */
 static bool is_operand(int id)
 {
-    return (is_valid_token(id)) &&
+    return (is_valid_token_id(id)) &&
            ((id == BEXPR_FALSE) || (id == BEXPR_TRUE));
 }
 
@@ -286,239 +286,11 @@ static int token_parse(const char *text, const char **endptr)
  */
 static const token_t *token_get(int id)
 {
-    if (is_valid_token(id)) {
+    if (is_valid_token_id(id)) {
         return &token_info[id];
     }
     return NULL;
 }
-
-/** \brief  Get string representing token
- *
- * \param[in]   id  token ID
- *
- * \return  token text
- */
-static const char *token_text(int id)
-{
-    const token_t *token = token_get(id);
-    if (token != NULL) {
-        return token->text;
-    } else {
-        return "<invalid>";
-    }
-}
-
-/* }}} */
-
-/* {{{ Token stack */
-/** \brief  Initial size of token stack */
-#define STACK_INITIAL_SIZE  32u
-
-/** \brief  Array of stack elements */
-static int    *stack_elements = NULL;
-
-/** \brief  Number of allocated elements for the stack */
-static size_t  stack_size = 0;
-
-/** \brief  Index in the stack of the top element
- *
- * This will be -1 to indicate the stack is empty.
- */
-static int     stack_index = -1;
-
-
-/** \brief  Initialize token stack
- *
- * (Re)initialize stack for use. When called the first time this will allocate
- * memory for a number of elements, which will grow when required. On subsequent
- * calls the stack pointer will be reset but the allocated elements kept intact
- * for reuse.
- */
-static void stack_init(void)
-{
-    if (stack_elements == NULL) {
-        stack_size     = STACK_INITIAL_SIZE;
-        stack_elements = lib_malloc(sizeof *stack_elements * stack_size);
-    }
-    stack_index    = -1;    /* stack is empty */
-}
-
-/** \brief  Push token onto stack
- *
- * \param[in]   token   token ID
- */
-static void stack_push(int token)
-{
-    stack_index++;
-    if ((size_t)stack_index == stack_size) {
-        stack_size *= 2;
-        stack_elements = lib_realloc(stack_elements,
-                                     sizeof *stack_elements * stack_size);
-    }
-    stack_elements[stack_index] = token;
-}
-
-/** \brief  Pull token from stack
- *
- * \return  token ID or \c BEXPR_INVALID if stack is empty
- */
-static int stack_pull(void)
-{
-    if (stack_index < 0) {
-        /* error, stack empty */
-        return BEXPR_INVALID;
-    } else {
-        return stack_elements[stack_index--];
-    }
-}
-
-/** \brief  Peek at top of stack
- *
- * Get token ID at top of stack but don't pull it from stack.
- *
- * \return  token ID or \c BEXPR_INVALID if stack is empty
- */
-static int stack_peek(void)
-{
-    return stack_index < 0 ? BEXPR_INVALID : stack_elements[stack_index];
-}
-
-/** \brief  Check if stack is empty
- *
- * \return \c true is stack is empty
- */
-static bool stack_is_empty(void)
-{
-    return stack_index < 0;
-}
-
-/** \brief  Free memory used by token stack */
-static void stack_free(void)
-{
-    lib_free(stack_elements);
-    stack_elements = NULL;
-}
-
-/** \brief  Print token stack on stdout
- *
- * \note    Doesn't add a newline so the user can print additional data after
- *          the stack on the same line.
- */
-static void stack_print(void)
-{
-    putchar('[');
-    for (int i = 0; i <= stack_index; i++) {
-        int token = stack_elements[i];
-
-        printf("'%s'", token_text(token));
-        if (i < stack_index) {
-            printf(", ");
-        }
-    }
-    putchar(']');
-}
-/* }}} */
-
-/* {{{ Output queue */
-/** \brief  Initial number of queue elements to allocate */
-#define QUEUE_INITIAL_SIZE 32
-
-/** \brief  Output queue elements */
-static int    *queue_elements = NULL;
-
-/** \brief  Number of allocated queue elements */
-static size_t  queue_size = 0;
-
-/** \brief  Index in queue of last element
- *
- * An index of -1 means the queue is empty.
- */
-static int     queue_index = -1;
-
-
-/** \brief  Initialize ouput queue
- *
- * (Re)initialize queue for use. When called the first time this will allocate
- * memory for a number of elements, which will grow when required. On subsequent
- * calls the tail pointer will be reset but the allocated elements kept intact
- * for reuse.
- */
-static void queue_init(void)
-{
-    if (queue_elements == NULL) {
-        queue_size     = QUEUE_INITIAL_SIZE;
-        queue_elements = lib_malloc(sizeof *queue_elements * queue_size);
-    }
-    queue_index    = -1;
-}
-
-/** \brief  Print output queue on stdout
- *
- * \note    Doesn't print a newline
- */
-static void queue_print(void)
-{
-    putchar('[');
-    for (int i = 0; i <= queue_index; i++) {
-        int token = queue_elements[i];
-
-        printf("'%s'", token_text(token));
-        if (i < queue_index) {
-            printf(", ");
-        }
-    }
-    putchar(']');
-}
-
-/** \brief  Free memory used by output queue */
-static void queue_free(void)
-{
-    lib_free(queue_elements);
-    queue_elements = NULL;
-}
-
-/** \brief  Add token to the output queue
- *
- * \param[in]   token   token ID
- */
-static void queue_enqueue(int token)
-{
-    queue_index++;
-    if ((size_t)queue_index == queue_size) {
-        queue_size *= 2;
-        queue_elements = lib_realloc(queue_elements,
-                                     sizeof *queue_elements * queue_size);
-    }
-    queue_elements[queue_index] = token;
-}
-
-#if 0
-/** \brief  Get token from front of queue
- *
- * \return  token ID or \c BEXPR_INVALID if the queue is empty
- */
-static int queue_dequeue(void)
-{
-    int token;
-
-    if (queue_index < 0) {
-        token = BEXPR_INVALID;
-    } else {
-        token = queue_elements[0];
-        for (int i = 0; i < queue_index; i++) {
-            queue_elements[i] = queue_elements[i + 1];
-        }
-        if (queue_index >= 0) {
-            queue_index--;
-        }
-    }
-    return token;
-}
-#endif
-/* }}} */
-
-
-#define TLIST_INIT { .tokens = NULL, .size = 0, .index = -1 }
 
 
 /* Dynamic token list, implements stack and queue operations */
@@ -529,6 +301,7 @@ typedef struct token_list_s {
     int             index;  /**< index in \c tokens, -1 means list is empty */
 } token_list_t;
 
+#define TLIST_INIT { .tokens = NULL, .size = 0, .index = -1 }
 
 static void token_list_init(token_list_t *list)
 {
@@ -545,7 +318,7 @@ static void token_list_reset(token_list_t *list)
     list->index = -1;
 }
 
-static void token_list_resize(token_list_t *list)
+static void token_list_resize_maybe(token_list_t *list)
 {
     if ((size_t)(list->index + 1) == list->size) {
         list->size  *= 2;
@@ -559,17 +332,42 @@ static void token_list_free(token_list_t *list)
     lib_free(list->tokens);
 }
 
-static int token_list_length(token_list_t *list)
+static int token_list_length(const token_list_t *list)
 {
     return list->index + 1;
 }
 
-static bool token_list_push(token_list_t *list, int id)
+static bool token_list_is_empty(const token_list_t *list)
+{
+    return (bool)(list->index < 0);
+}
+
+static void token_list_print(const token_list_t *list)
+{
+    int index;
+    int length = token_list_length(list);
+
+    putchar('[');
+    for (index = 0; index < length; index++) {
+        printf("%s", list->tokens[index]->text);
+        if (index < length - 1) {
+            printf(", ");
+        }
+    }
+    putchar(']');
+}
+
+static void token_list_push(token_list_t *list, const token_t *token)
+{
+    token_list_resize_maybe(list);
+    list->tokens[++list->index] = token;
+}
+
+static bool token_list_push_id(token_list_t *list, int id)
 {
     const token_t *token = token_get(id);
     if (token != NULL) {
-        token_list_resize(list);
-        list->tokens[++list->index] = token;
+        token_list_push(list, token);
         return true;
     }
     return false;
@@ -577,15 +375,24 @@ static bool token_list_push(token_list_t *list, int id)
 
 #define token_list_enqueue(list, id) token_list_push(list, id)
 
-static const token_t *token_list_pop(token_list_t *list)
+static const token_t *token_list_peek(const token_list_t *list)
 {
     if (list->index >= 0) {
-        return list->tokens[--list->index];
+        return list->tokens[list->index];
+    } else {
+        return NULL;
+    }
+}
+
+static const token_t *token_list_pull(token_list_t *list)
+{
+    if (list->index >= 0) {
+        return list->tokens[list->index--];
     }
     return NULL;
 }
 
-static const token_t* token_list_token_at(token_list_t *list, int index)
+static const token_t* token_list_token_at(const token_list_t *list, int index)
 {
     if (index < 0 || index >= (int)list->size) {
         return NULL;
@@ -596,17 +403,6 @@ static const token_t* token_list_token_at(token_list_t *list, int index)
 
 /** \brief  Copy of text fed to tokenizer */
 static char   *expr_text;
-
-#if 0
-/** \brief  List of tokens making up the infix expression */
-static int    *expr_tokens;
-
-/** \brief  Length of expression */
-static size_t  expr_length;
-
-/** \brief  Number of tokens allocated */
-static size_t  expr_avail;
-#endif
 
 static token_list_t expr_tokens = TLIST_INIT;
 static token_list_t token_stack = TLIST_INIT;
@@ -622,14 +418,7 @@ void bexpr_init(void)
     token_list_init(&expr_tokens);
     token_list_init(&token_stack);
     token_list_init(&token_queue);
-
     expr_text  = NULL;
-//    expr_length = 0;
-//    expr_avail  = 32;
-//    expr_tokens = lib_malloc(sizeof *expr_tokens * expr_avail);
-    stack_init();
-    queue_init();
-
 }
 
 
@@ -649,8 +438,6 @@ void bexpr_reset(void)
     token_list_reset(&expr_tokens);
     token_list_reset(&token_stack);
     token_list_reset(&token_queue);
-    stack_init();
-    queue_init();
 }
 
 
@@ -683,8 +470,6 @@ void bexpr_free(void)
     token_list_free(&token_stack);
     token_list_free(&token_queue);
     lib_free(expr_text);
-    stack_free();
-    queue_free();
 }
 
 
@@ -696,7 +481,7 @@ void bexpr_free(void)
  */
 bool bexpr_add_token(int id)
 {
-    if (token_list_push(&expr_tokens, id)) {
+    if (token_list_push_id(&expr_tokens, id)) {
         return true;
     } else {
         SET_ERROR(BEXPR_ERR_INVALID_TOKEN);
@@ -754,46 +539,42 @@ bool bexpr_tokenize(const char *text)
  */
 static bool infix_to_postfix(void)
 {
-    int  oper1;
-    int  oper2;
-    int  prec1;
-    int  prec2;
-    int  assoc1;
+    const token_t *oper1 = NULL;
+    const token_t *oper2 = NULL;
 
     for (int i = 0; i < token_list_length(&expr_tokens); i++) {
-        const token_t *token = token_list_token_at(&expr_tokens, i);
+        oper1 = token_list_token_at(&expr_tokens, i);
 
         printf("\n%s(): stack: ", __func__);
-        stack_print();
+        token_list_print(&token_stack);
         putchar('\n');
         printf("%s(): queue: ", __func__);
-        queue_print();
+        token_list_print(&token_queue);
         putchar('\n');
-        printf("%s(): token: '%s':\n",  __func__, token->text);
+        printf("%s(): token: '%s':\n",  __func__, oper1->text);
 
-        if (is_operand(token->id)) {
+        if (is_operand(oper1->id)) {
             /* operands are added unconditionally to the output queue */
-            queue_enqueue(token->id);
+            token_list_enqueue(&token_queue, oper1);
         } else {
             /* handle operators */
-            oper1 = token->id;
-
-            if (oper1 == BEXPR_LPAREN) {
+            if (oper1->id == BEXPR_LPAREN) {
                 /* left parenthesis: onto the operator stack */
-                stack_push(oper1);
-            } else if (oper1 == BEXPR_RPAREN) {
+                token_list_push(&token_stack, oper1);
+            } else if (oper1->id == BEXPR_RPAREN) {
                 /* right parenthesis: while there's an operator on the stack
                  * and it's not a left parenthesis: pull from stack and add to
                  * the output queue */
-                while (!stack_is_empty()) {
-                    oper1 = stack_pull();
-                    if (oper1 != BEXPR_LPAREN) {
-                        queue_enqueue(oper1);
+
+                while (!token_list_is_empty(&token_stack)) {
+                    oper1 = token_list_pull(&token_stack);
+                    if (oper1->id != BEXPR_LPAREN) {
+                        token_list_enqueue(&token_queue, oper1);
                     }
                 }
                 /* sanity check: must have a left parenthesis otherwise we
                  * have mismatched parenthesis */
-                if (oper1 != BEXPR_LPAREN) {
+                if (oper1->id != BEXPR_LPAREN) {
                     SET_ERROR(BEXPR_ERR_EXPECTED_LPAREN);
                     return false;
                 }
@@ -801,58 +582,45 @@ static bool infix_to_postfix(void)
             } else {
                 /* handle operator until a left parenthesis is on top of the
                  * operator stack */
-                while (!stack_is_empty()) {
-                    const token_t *tok1;
-                    const token_t *tok2;
+                while (!token_list_is_empty(&token_stack)) {
 
                     /* check for left parenthesis */
-                    oper2 = stack_peek();
-                    if (oper2 == BEXPR_LPAREN) {
+                    oper2 = token_list_peek(&token_stack);
+                    if (oper2->id == BEXPR_LPAREN) {
                         break;
                     }
 
-                    tok1 = token_get(oper1);
-                    tok2 = token_get(oper2);
-                    /* sanity check: shouldn't be true if the parser is correct */
-                    if (tok1 == NULL || tok2 == NULL) {
-                        SET_ERROR(BEXPR_ERR_FATAL);
-                        return false;
-                    }
-
-                    prec1  = tok1->prec;
-                    prec2  = tok2->prec;
-                    assoc1 = tok1->assoc;
-
-                    if ((prec2 > prec1) || ((prec2 == prec1) && assoc1 == BEXPR_LTR)) {
-                        oper2 = stack_pull();
-                        queue_enqueue(oper2);
+                    if ((oper2->prec > oper1->prec) ||
+                            ((oper2->prec == oper1->prec) && oper1->assoc == BEXPR_LTR)) {
+                        oper2 = token_list_pull(&token_stack);
+                        token_list_enqueue(&token_queue, oper2);
                     } else {
                         break;
                     }
                 }
-                stack_push(oper1);
+                token_list_push(&token_stack, oper1);
             }
         }
     }
 
     printf("%s(): operator stack = ", __func__);
-    stack_print();
+    token_list_print(&token_stack);
     putchar('\n');
-    while (!stack_is_empty()) {
-        oper1 = stack_pull();
+    while (!token_list_is_empty(&token_stack)) {
+        oper1 = token_list_pull(&token_stack);
         printf("%s(): pulled operator (%s,%d)\n",
-               __func__, token_text(oper1), oper1);
+               __func__, oper1->text, oper1->id);
 
-        if (oper1 == BEXPR_LPAREN) {
+        if (oper1->id == BEXPR_LPAREN) {
             /* unexpected left parenthesis */
             SET_ERROR(BEXPR_ERR_UNMATCHED_PARENS);
             return false;
         }
-        queue_enqueue(oper1);
+        token_list_enqueue(&token_queue, oper1);
     }
 
     printf("%s(): output queue = ", __func__);
-    queue_print();
+    token_list_print(&token_queue);
     putchar('\n');
 
     return true;
@@ -885,9 +653,9 @@ bool bexpr_evaluate(bool *result)
     }
 
     /* reset stack for use as operand stack */
-    stack_init();
+    token_list_reset(&token_stack);
     /* reset output queue */
-    queue_init();
+    token_list_reset(&token_queue);
 
     /* convert infix expression to postfix expression */
     if (!infix_to_postfix()) {
@@ -896,7 +664,7 @@ bool bexpr_evaluate(bool *result)
     }
 
     /* reset stack for use as operand stack */
-    stack_init();
+    token_list_reset(&token_stack);
 
     /* try to evaluate the postfix expression in the queue */
     if (!eval_postfix(result)) {
