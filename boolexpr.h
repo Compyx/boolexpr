@@ -34,6 +34,7 @@ enum {
     BEXPR_ERR_EXPECTED_RPAREN,  /**< expected right parenthesis */
     BEXPR_ERR_UNMATCHED_PARENS, /**< unmatched parenthesis */
     BEXPR_ERR_EMPTY_EXPRESSION, /**< empty expression */
+    BEXPR_ERR_MISSING_OPERAND,  /**< missing operand for operator */
 
     BEXPR_ERROR_COUNT
 };
