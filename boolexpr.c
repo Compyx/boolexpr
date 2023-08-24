@@ -522,12 +522,29 @@ static const token_t* token_list_token_at(const token_list_t *list, int index)
 }
 
 
-/** \brief  Copy of text fed to tokenizer */
-static char   *expr_text;
+/** \brief  Copy of text fed to tokenizer with bexpr_parse()
+ */
+static char *infix_text = NULL;
 
-static token_list_t expr_tokens = TLIST_INIT;
-static token_list_t token_stack = TLIST_INIT;
-static token_list_t token_queue = TLIST_INIT;
+/** \brief  Tokenized infix expression
+ *
+ * Input for the infix to postfix conversion.
+ */
+static token_list_t infix_tokens = TLIST_INIT;
+
+/** \brief  Token stack
+ *
+ * Stack used for operators during postfix to infix conversion, and for
+ * operands during postfix expression evaluation.
+ */
+static token_list_t stack = TLIST_INIT;
+
+/** \brief  Token queue
+ *
+ * Queue used for output during postfix to infix conversion, and as input
+ * during postfix expression evaluation.
+ */
+static token_list_t queue = TLIST_INIT;
 
 
 /** \brief  Initialize expression for use
@@ -536,10 +553,10 @@ static token_list_t token_queue = TLIST_INIT;
  */
 void bexpr_init(void)
 {
-    token_list_init(&expr_tokens);
-    token_list_init(&token_stack);
-    token_list_init(&token_queue);
-    expr_text  = NULL;
+    token_list_init(&infix_tokens);
+    token_list_init(&stack);
+    token_list_init(&queue);
+    infix_text  = NULL;
 }
 
 
@@ -554,11 +571,11 @@ void bexpr_init(void)
  */
 void bexpr_reset(void)
 {
-    lib_free(expr_text);
-    expr_text  = NULL;
-    token_list_reset(&expr_tokens);
-    token_list_reset(&token_stack);
-    token_list_reset(&token_queue);
+    lib_free(infix_text);
+    infix_text  = NULL;
+    token_list_reset(&infix_tokens);
+    token_list_reset(&stack);
+    token_list_reset(&queue);
 }
 
 
@@ -566,10 +583,10 @@ void bexpr_reset(void)
 void bexpr_print(void)
 {
     int index;
-    int length = token_list_length(&expr_tokens);
+    int length = token_list_length(&infix_tokens);
 
     for (index = 0; index < length; index++) {
-        const token_t *token = token_list_token_at(&expr_tokens, index);
+        const token_t *token = token_list_token_at(&infix_tokens, index);
 
         printf("'%s'", token->text);
         if (index < length) {
@@ -587,10 +604,10 @@ void bexpr_print(void)
  */
 void bexpr_free(void)
 {
-    token_list_free(&expr_tokens);
-    token_list_free(&token_stack);
-    token_list_free(&token_queue);
-    lib_free(expr_text);
+    token_list_free(&infix_tokens);
+    token_list_free(&stack);
+    token_list_free(&queue);
+    lib_free(infix_text);
 }
 
 
@@ -602,7 +619,7 @@ void bexpr_free(void)
  */
 bool bexpr_add_token(int id)
 {
-    if (token_list_push_id(&expr_tokens, id)) {
+    if (token_list_push_id(&infix_tokens, id)) {
         return true;
     } else {
         SET_ERROR(BEXPR_ERR_INVALID_TOKEN);
@@ -628,8 +645,8 @@ bool bexpr_tokenize(const char *text)
     len  = strlen(text);
 
     /* make copy of input text */
-    expr_text = lib_malloc(len + 1u);
-    memcpy(expr_text, text, len + 1u);
+    infix_text = lib_malloc(len + 1u);
+    memcpy(infix_text, text, len + 1u);
 
     //printf("%s(): parsing '%s':\n", __func__, text);
 
@@ -664,39 +681,39 @@ static bool infix_to_postfix(void)
     const token_t *oper2 = NULL;
 
     /* reset stack for use as operand stack */
-    token_list_reset(&token_stack);
+    token_list_reset(&stack);
     /* reset output queue */
-    token_list_reset(&token_queue);
+    token_list_reset(&queue);
 
     /* iterate infix expression, generating a postfix expression */
-    for (int i = 0; i < token_list_length(&expr_tokens); i++) {
-        oper1 = token_list_token_at(&expr_tokens, i);
+    for (int i = 0; i < token_list_length(&infix_tokens); i++) {
+        oper1 = token_list_token_at(&infix_tokens, i);
 #if 0
         printf("\n%s(): stack: ", __func__);
-        token_list_print(&token_stack);
+        token_list_print(&stack);
         putchar('\n');
         printf("%s(): queue: ", __func__);
-        token_list_print(&token_queue);
+        token_list_print(&queue);
         putchar('\n');
         printf("%s(): token: '%s':\n",  __func__, oper1->text);
 #endif
         if (is_operand(oper1->id)) {
             /* operands are added unconditionally to the output queue */
-            token_list_enqueue(&token_queue, oper1);
+            token_list_enqueue(&queue, oper1);
         } else {
             /* handle operators */
             if (oper1->id == BEXPR_LPAREN) {
                 /* left parenthesis: onto the operator stack */
-                token_list_push(&token_stack, oper1);
+                token_list_push(&stack, oper1);
             } else if (oper1->id == BEXPR_RPAREN) {
                 /* right parenthesis: while there's an operator on the stack
                  * and it's not a left parenthesis: pull from stack and add to
                  * the output queue */
 
-                while (!token_list_is_empty(&token_stack)) {
-                    oper1 = token_list_pull(&token_stack);
+                while (!token_list_is_empty(&stack)) {
+                    oper1 = token_list_pull(&stack);
                     if (oper1->id != BEXPR_LPAREN) {
-                        token_list_enqueue(&token_queue, oper1);
+                        token_list_enqueue(&queue, oper1);
                     }
                 }
                 /* sanity check: must have a left parenthesis otherwise we
@@ -709,33 +726,33 @@ static bool infix_to_postfix(void)
             } else {
                 /* handle operator until a left parenthesis is on top of the
                  * operator stack */
-                while (!token_list_is_empty(&token_stack)) {
+                while (!token_list_is_empty(&stack)) {
 
                     /* check for left parenthesis */
-                    oper2 = token_list_peek(&token_stack);
+                    oper2 = token_list_peek(&stack);
                     if (oper2->id == BEXPR_LPAREN) {
                         break;
                     }
 
                     if ((oper2->prec > oper1->prec) ||
                             ((oper2->prec == oper1->prec) && oper1->assoc == BEXPR_LTR)) {
-                        oper2 = token_list_pull(&token_stack);
-                        token_list_enqueue(&token_queue, oper2);
+                        oper2 = token_list_pull(&stack);
+                        token_list_enqueue(&queue, oper2);
                     } else {
                         break;
                     }
                 }
-                token_list_push(&token_stack, oper1);
+                token_list_push(&stack, oper1);
             }
         }
     }
 #if 0
     printf("%s(): operator stack = ", __func__);
-    token_list_print(&token_stack);
+    token_list_print(&stack);
     putchar('\n');
 #endif
-    while (!token_list_is_empty(&token_stack)) {
-        oper1 = token_list_pull(&token_stack);
+    while (!token_list_is_empty(&stack)) {
+        oper1 = token_list_pull(&stack);
 #if 0
         printf("%s(): pulled operator (%s,%d)\n",
                __func__, oper1->text, oper1->id);
@@ -745,11 +762,11 @@ static bool infix_to_postfix(void)
             SET_ERROR(BEXPR_ERR_UNMATCHED_PARENS);
             return false;
         }
-        token_list_enqueue(&token_queue, oper1);
+        token_list_enqueue(&queue, oper1);
     }
 
     printf("%s(): output queue = ", __func__);
-    token_list_print(&token_queue);
+    token_list_print(&queue);
     putchar('\n');
 
     return true;
@@ -757,7 +774,7 @@ static bool infix_to_postfix(void)
 
 /** \brief  Evaluate postfix expression
  *
- * Evaluate postfix expression in \c token_queue.
+ * Evaluate postfix expression in \c queue.
  *
  * \param[out]  result  result of expression
  *
@@ -770,20 +787,20 @@ static bool eval_postfix(bool *result)
     const token_t *token;
 
     /* reset stack for use as operand stack */
-    token_list_reset(&token_stack);
+    token_list_reset(&stack);
 
     /* iterate queue containing postfix expression and try to evaluate it */
-    length = token_list_length(&token_queue);
+    length = token_list_length(&queue);
     for (index = 0; index < length; index++) {
-        token = token_list_token_at(&token_queue, index);
+        token = token_list_token_at(&queue, index);
 
         printf("%s(): token %d = %s\n", __func__, index, token->text);
         if (is_operand(token->id)) {
             printf("%s(): operand, pushing onto stack: ", __func__);
 
-            token_list_push(&token_stack, token);
+            token_list_push(&stack, token);
 
-            token_list_print(&token_stack);
+            token_list_print(&stack);
             putchar('\n');
         } else {
             /* operator, pull argument(s) from stack */
@@ -794,7 +811,7 @@ static bool eval_postfix(bool *result)
             bool b2 = false;
             bool res;
 
-            arg1 = token_list_pull(&token_stack);
+            arg1 = token_list_pull(&stack);
             if (arg1 == NULL) {
                 SET_ERROR(BEXPR_ERR_MISSING_OPERAND);
                 return false;
@@ -804,7 +821,7 @@ static bool eval_postfix(bool *result)
 
             if (token->arity == BEXPR_BINARY) {
                 /* binary operator, pull another argument */
-                arg2 = token_list_pull(&token_stack);
+                arg2 = token_list_pull(&stack);
                 if (arg2 == NULL) {
                     SET_ERROR(BEXPR_ERR_MISSING_OPERAND);
                     return false;
@@ -826,12 +843,12 @@ static bool eval_postfix(bool *result)
                     SET_ERROR(BEXPR_ERR_INVALID_TOKEN);
                     return false;
             }
-            token_list_push(&token_stack, token_from_bool(res));
+            token_list_push(&stack, token_from_bool(res));
         }
     }
 
     /* final result should be on the stack */
-    token = token_list_pull(&token_stack);
+    token = token_list_pull(&stack);
     if (token == NULL) {
         SET_ERROR(BEXPR_ERR_MISSING_OPERAND);   /* illegal expression/syntax error? */
         return false;
@@ -855,7 +872,7 @@ bool bexpr_evaluate(bool *result)
 {
     *result = false;
 
-    if (token_list_length(&expr_tokens) <= 0) {
+    if (token_list_length(&infix_tokens) <= 0) {
         SET_ERROR(BEXPR_ERR_EMPTY_EXPRESSION);
         return false;
     }
