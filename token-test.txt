@@ -1,9 +1,12 @@
-false && true
+# Syntax: <expected-errnum [<expected-result>]> <expression>
 
-false && ( true || false )
+0   false   false && true
 
-false && true || false
+# fails while it shouldn't:
+0   false   false && ( true || false )
 
-(false && true) || false
+0   true    true && false || true
 
-true && !false
+0   false   (false && true) || false
+
+0   true    true && !false
