@@ -293,16 +293,27 @@ static const token_t *token_get(int id)
     return NULL;
 }
 
+/** \brief  Get bool value from token
+ *
+ * \param[in]   token   token
+ *
+ * \return  \c true if \a token is \c BEXPR_TRUE
+ */
 static bool token_to_bool(const token_t *token)
 {
     return (bool)(token->id == BEXPR_TRUE);
 }
 
+/** \brief  Get token for boolean value
+ *
+ * \param[in]   value   boolean value
+ *
+ * \return  pointer to token representing \a value
+ */
 static const token_t *token_from_bool(bool value)
 {
     return token_get(value ? BEXPR_TRUE : BEXPR_FALSE);
 }
-
 /* }}} */
 
 
@@ -744,7 +755,14 @@ static bool infix_to_postfix(void)
     return true;
 }
 
-
+/** \brief  Evaluate postfix expression
+ *
+ * Evaluate postfix expression in \c token_queue.
+ *
+ * \param[out]  result  result of expression
+ *
+ * \return  \c true on success
+ */
 static bool eval_postfix(bool *result)
 {
     int  index;
