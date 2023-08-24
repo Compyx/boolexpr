@@ -12,7 +12,7 @@
 
 #include "boolexpr.h"
 
-
+/* {{{ Types, enums, macros */
 /** \brief  Array length helper
  *
  * Determine size of \a arr in number of elements.
@@ -27,17 +27,19 @@
     bexpr_errno = errnum; \
     fprintf(stderr, "%s(): error %d: %s\n", __func__, errnum, bexpr_strerror(errnum));
 
+/* Associativity of operators */
 enum {
     BEXPR_LTR,  /**< left-to-right associativity */
     BEXPR_RTL,  /**< right-to-left associativity */
 };
 
+/* Arity of operators */
 enum {
     BEXPR_UNARY  = 1,   /**< unary operator */
     BEXPR_BINARY = 2    /**< binary operator */
 };
 
-/** \brief  Token specification
+/** \brief  Token object
  */
 typedef struct token_s {
     const char *text;   /**< text */
@@ -47,9 +49,25 @@ typedef struct token_s {
     int         prec;   /**< operator precedence */
 } token_t;
 
+/** \brief  Token list object
+ */
+typedef struct token_list_s {
+    const token_t **tokens; /**< array of token info pointers */
+    size_t          size;   /**< size of \c tokens */
+    int             index;  /**< index in \c tokens, -1 means list is empty */
+} token_list_t;
+
 /** \brief  Maximum lenght of a token's text */
 #define MAX_TOKEN_LEN   5
 
+/** \brief  Initializer for a token list */
+#define TLIST_INIT { .tokens = NULL, .size = 0, .index = -1 }
+
+/** \brief  Initial number of available tokens in a token list */
+#define TLIST_INITIAL_SIZE  32u
+/* }}} */
+
+/* {{{ Static constant data */
 /** \brief  List of valid tokens
  *
  * Contains both operators and operands.
@@ -83,7 +101,31 @@ static const char *error_messages[] = {
     "expression is empty",
     "missing operand"
 };
+/* }}} */
 
+/** \brief  Copy of text fed to tokenizer with bexpr_parse()
+ */
+static char *infix_text = NULL;
+
+/** \brief  Tokenized infix expression
+ *
+ * Input for the infix to postfix conversion.
+ */
+static token_list_t infix_tokens = TLIST_INIT;
+
+/** \brief  Token stack
+ *
+ * Stack used for operators during postfix to infix conversion, and for
+ * operands during postfix expression evaluation.
+ */
+static token_list_t stack = TLIST_INIT;
+
+/** \brief  Token queue
+ *
+ * Queue used for output during postfix to infix conversion, and as input
+ * during postfix expression evaluation.
+ */
+static token_list_t queue = TLIST_INIT;
 
 /** \brief  Error code */
 int bexpr_errno = 0;
@@ -106,9 +148,17 @@ const char *bexpr_strerror(int errnum)
 
 
 /* {{{ Memory management: reimplementation of VICE's lib_foo() functions */
-
 static void lib_free(void *ptr);
 
+/** \brief  Allocate memory
+ *
+ * Allocate \a size bytes on the heap, call \c exit(1) when no memory is
+ * available.
+ *
+ * \param[in]   size    number of bytes to allocate
+ *
+ * \return  pointer to allocated memory
+ */
 static void *lib_malloc(size_t size)
 {
     void *ptr = malloc(size);
@@ -125,6 +175,8 @@ static void *lib_malloc(size_t size)
  *
  * \param[in]   ptr     memory to reallocate
  * \param[in]   size    new size for \a ptr
+ *
+ * \return  pointer to (re)allocated memory
  *
  * \note    Like \c realloc(3), using \c NULL for \a ptr is equivalent to
  *          calling lib_malloc(\a size)
@@ -321,21 +373,6 @@ static const token_t *token_from_bool(bool value)
  * by the rest of the code.
  */
 
-/** \brief  Token list object
- */
-typedef struct token_list_s {
-    const token_t **tokens; /**< array of token info pointers */
-    size_t          size;   /**< size of \c tokens */
-    int             index;  /**< index in \c tokens, -1 means list is empty */
-} token_list_t;
-
-/** \brief  Initializer for a token list */
-#define TLIST_INIT { .tokens = NULL, .size = 0, .index = -1 }
-
-/** \brief  Initial number of available tokens in a token list */
-#define TLIST_INITIAL_SIZE  32u
-
-
 /** \brief  Initialize token list for use
  *
  * Initialize \a list by allocating space for \c TLIST_INITIAL_SIZE tokens and
@@ -522,31 +559,6 @@ static const token_t* token_list_token_at(const token_list_t *list, int index)
 }
 
 
-/** \brief  Copy of text fed to tokenizer with bexpr_parse()
- */
-static char *infix_text = NULL;
-
-/** \brief  Tokenized infix expression
- *
- * Input for the infix to postfix conversion.
- */
-static token_list_t infix_tokens = TLIST_INIT;
-
-/** \brief  Token stack
- *
- * Stack used for operators during postfix to infix conversion, and for
- * operands during postfix expression evaluation.
- */
-static token_list_t stack = TLIST_INIT;
-
-/** \brief  Token queue
- *
- * Queue used for output during postfix to infix conversion, and as input
- * during postfix expression evaluation.
- */
-static token_list_t queue = TLIST_INIT;
-
-
 /** \brief  Initialize expression for use
  *
  * Allocate memory for tokenizer and evaluator.
@@ -557,6 +569,7 @@ void bexpr_init(void)
     token_list_init(&stack);
     token_list_init(&queue);
     infix_text  = NULL;
+    bexpr_errno = 0;
 }
 
 
@@ -576,6 +589,7 @@ void bexpr_reset(void)
     token_list_reset(&infix_tokens);
     token_list_reset(&stack);
     token_list_reset(&queue);
+    bexpr_errno = 0;
 }
 
 
@@ -604,10 +618,10 @@ void bexpr_print(void)
  */
 void bexpr_free(void)
 {
+    lib_free(infix_text);
     token_list_free(&infix_tokens);
     token_list_free(&stack);
     token_list_free(&queue);
-    lib_free(infix_text);
 }
 
 
@@ -871,6 +885,7 @@ static bool eval_postfix(bool *result)
 bool bexpr_evaluate(bool *result)
 {
     *result = false;
+    bexpr_errno = 0;
 
     if (token_list_length(&infix_tokens) <= 0) {
         SET_ERROR(BEXPR_ERR_EMPTY_EXPRESSION);
