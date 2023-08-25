@@ -1,6 +1,6 @@
 CC = gcc
 LD = $(CC)
-CFLAGS = -O3 -g -Wall -Wextra \
+CFLAGS = -O3 -g -std=c99 -Wall -Wextra \
 	 -Wcast-qual \
 	 -Wconversion \
 	 -Wformat \

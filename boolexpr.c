@@ -9,8 +9,29 @@
 #include <string.h>
 #include <stdbool.h>
 #include <ctype.h>
+#include <stdarg.h>
 
 #include "boolexpr.h"
+
+
+/* Enable debugging messages */
+#define DEBUG_BEXPR
+
+/** \def bexpr_debug
+ *
+ * Print debugging message on stdout if \c DEBUG_BEXPR is defined. Use just like
+ * printf(), for example: `bexpr_debug("value = %d\n", 42)` will print
+ * "[debug] \<funcname\>:\<line\>(): value = 42".
+ */
+
+#ifdef DEBUG_BEXPR
+#define bexpr_debug(...) \
+    printf("[debug] %s:%d(): ", __func__, __LINE__); \
+    printf(__VA_ARGS__)
+#else
+#define bexpr_debug(...)
+#endif
+
 
 /* {{{ Types, enums, macros */
 /** \brief  Array length helper
@@ -780,10 +801,11 @@ static bool infix_to_postfix(void)
         token_list_enqueue(&queue, oper1);
     }
 
-    printf("%s(): output queue = ", __func__);
+    bexpr_debug("output queue = ");
+#ifdef DEBUG_BEXPR
     token_list_print(&queue);
     putchar('\n');
-
+#endif
     return true;
 }
 
@@ -809,14 +831,15 @@ static bool eval_postfix(bool *result)
     for (index = 0; index < length; index++) {
         token = token_list_token_at(&queue, index);
 
-        printf("%s(): token %d = %s\n", __func__, index, token->text);
+//        bexpr_debug("token %d = %s\n", index, token->text);
         if (is_operand(token->id)) {
-            printf("%s(): operand, pushing onto stack: ", __func__);
+//            bexpr_debug("operand, pusing onto the stack: ");
 
             token_list_push(&stack, token);
-
-            token_list_print(&stack);
-            putchar('\n');
+#ifdef DEBUG_BEXPR
+        //    token_list_print(&stack);
+         //   putchar('\n');
+#endif
         } else {
             /* operator, pull argument(s) from stack */
             const token_t *arg1;
@@ -831,7 +854,7 @@ static bool eval_postfix(bool *result)
                 SET_ERROR(BEXPR_ERR_MISSING_OPERAND);
                 return false;
             }
-            printf("%s(): arg1 = %s\n", __func__, arg1->text);
+            //printf("%s(): arg1 = %s\n", __func__, arg1->text);
             b1 = token_to_bool(arg1);
 
             if (token->arity == BEXPR_BINARY) {
