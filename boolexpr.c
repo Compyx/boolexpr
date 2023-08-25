@@ -726,9 +726,10 @@ static bool infix_to_postfix(void)
 
                 while (!token_list_is_empty(&stack)) {
                     oper1 = token_list_pull(&stack);
-                    if (oper1->id != BEXPR_LPAREN) {
-                        token_list_enqueue(&queue, oper1);
+                    if (oper1->id == BEXPR_LPAREN) {
+                        break;
                     }
+                    token_list_enqueue(&queue, oper1);
                 }
                 /* sanity check: must have a left parenthesis otherwise we
                  * have mismatched parenthesis */
