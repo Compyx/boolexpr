@@ -84,3 +84,17 @@ When evaluating multiple expressions during the lifetime of a program, the
 evaluator can be reset for reuse without freeing and reallocating internal
 resources with `bexpr_reset()`. Cleaning up (on program exit or so) still
 requires `bexpr_free()` to properly release used resources.
+
+## Error codes and messages
+
+A simple mechanism is provided to check for types of errors and translating them
+into user-readable messages:
+
+The variable `extern int bexpr_errno` provides the error code set by the
+evaluator in case of errors.
+Error messages can be obtained with `bexpr_strerror(int errnum)`.
+
+Currently there is no possibility to pinpoint where in an expression the error
+occurred, so reporting the column number in a source line won't work.
+
+
