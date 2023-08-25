@@ -36,6 +36,13 @@ static void print_ioerror(void)
             prgname, errno, strerror(errno));
 }
 
+/** \brief  Skip whitespace in string
+ *
+ * \param[in]   s   string
+ *
+ * \return  pointer to first non-whitespace character in \a s (can point to
+ *          terminating nul character in \a s if only whitespace was encountered
+ */
 static char *skip_whitespace(char *s)
 {
     while (*s != '\0' && isspace((unsigned char)*s)) {
@@ -43,6 +50,66 @@ static char *skip_whitespace(char *s)
     }
     return s;
 }
+
+/** \brief  Run test on expression
+ *
+ * Tokenize and evaluate \a text, comparing \a expected_errnum to \c bexpr_errno
+ * and \a expected_result to the result of evaluation.
+ *
+ * \param[in]   text            expression text
+ * \param[in]   expected_errnum expected error number
+ * \param[in]   expected_result expected result of evaluation
+ *
+ * \return  \c true if test passed
+ */
+static bool run_test(const char *text, int expected_errnum, bool expected_result)
+{
+    bool result = false;
+
+    bexpr_reset();
+    bexpr_errno = 0;
+
+    if (!bexpr_tokenize(text)) {
+        printf("bexpr_tokenize() failed: ");
+        if (expected_errnum == 0) {
+            printf("FAIL: expected to pass\n");
+            return false;
+        } else {
+            if (expected_errnum == bexpr_errno) {
+                printf("PASS\n");
+                return true;
+            } else {
+                printf("FAIL: errnum %d doesn't match expected %d\n",
+                       bexpr_errno, expected_errnum);
+                return false;
+            }
+        }
+    }
+
+    printf("Evaluating expression: ");
+    if (bexpr_evaluate(&result)) {
+        /* evaluation passed */
+        if (result == expected_result) {
+            printf(" %s: PASS.\n", result ? "true" : "false");
+            return true;
+        } else {
+            printf(" FAIL: result %s doesn't match expected %s\n",
+                   result ? "true" : "false",
+                   expected_result ? "true" : "false");
+            return false;
+        }
+    } else {
+        if (bexpr_errno != expected_errnum) {
+            printf("FAIL: errnum %d doesn't match expected %d\n",
+                   bexpr_errno, expected_errnum);
+            return false;
+        } else {
+            printf("errnum %d: PASS.\n", bexpr_errno);
+        }
+        return true;
+    }
+}
+
 
 /** \brief  Parse file \a path to test boolean expression handling
  *
@@ -56,6 +123,8 @@ static bool parse_file(const char *path)
     FILE    *fp;
     int      lineno = 1;
     bool     status = true;
+    int      total  = 0;
+    int      passed = 0;
 
     fp = fopen(path, "rb");
     if (fp == NULL) {
@@ -70,8 +139,6 @@ static bool parse_file(const char *path)
         char *endptr;
         long  errnum_exp = 0;   /* expected error number */
         bool  result_exp = false;   /* expected result of evaluation */
-
-        bexpr_reset();
 
         memset(line, 0, sizeof line);
         if (fgets(line, (int)sizeof line, fp) == NULL) {
@@ -128,33 +195,18 @@ static bool parse_file(const char *path)
         curpos = skip_whitespace(curpos);
         printf("[%2d] Tokenizing \"%s\"\n", lineno, curpos);
 
-        if (!bexpr_tokenize(curpos)) {
-            printf("[%2d] Parse error.\n", lineno);
-        } else {
-            bool result = false;
-
-            printf("[%2d] OK: ", lineno);
-            bexpr_print();
-
-            printf("[%2d] Evaluating:\n", lineno);
-            if (bexpr_evaluate(&result)) {
-                printf("[%2d] ok: %s\n", lineno, result ? "true" : "false");
-            } else {
-                printf("[%2d] fail.\n", lineno);
-            }
-            if ((result == result_exp) && (bexpr_errno == errnum_exp)) {
-                printf("TEST PASS\n");
-            } else {
-                printf("TEST FAIL\n");
-            }
-
+        if (run_test(curpos, (int)errnum_exp, result_exp)) {
+            passed++;
         }
-        putchar('\n');
         lineno++;
+        total++;
     }
 cleanup:
     bexpr_free();
     fclose(fp);
+
+    printf("Passed: %d out of %d\n", passed, total);
+
     return status;
 }
 
