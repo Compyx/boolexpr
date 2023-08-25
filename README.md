@@ -44,7 +44,7 @@ Declare a `boolexpr_t` object and initialize it using `bexpr_init()`:
 ```c
 #include <boolexpr.h>
 
-boolexpr_init();
+bexpr_init();
 ```
 
 This allocates memory for the evaluator and initializes some internal state.
