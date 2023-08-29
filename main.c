@@ -35,7 +35,12 @@
  */
 static char line[256];
 
+/** \brief  Basename portion of argv[0]
+ */
 static char *prgname;
+
+static int total_tests;
+static int passed_tests;
 
 
 /** \brief  Print usage message on stdout
@@ -91,24 +96,28 @@ static bool run_test(const char *text, int expected_errnum, bool expected_result
     bexpr_reset();
     bexpr_errno = 0;
 
-    if (!bexpr_tokenize(text)) {
-        printf("bexpr_tokenize() failed: ");
+    printf("  Tokenizing: ");
+    if (bexpr_tokenize(text)) {
+        /* tokenization passed */
+        printf("true: PASS\n");
+    } else {
+        /* tokenization failed */
         if (expected_errnum == 0) {
-            printf("FAIL: expected to pass\n");
+            printf("false: FAIL: expected to pass\n");
             return false;
         } else {
             if (expected_errnum == bexpr_errno) {
-                printf("PASS\n");
+                printf("false: PASS\n");
                 return true;
             } else {
-                printf("FAIL: errnum %d doesn't match expected %d\n",
+                printf("false: FAIL: error %d doesn't match expected %d\n",
                        bexpr_errno, expected_errnum);
                 return false;
             }
         }
     }
 
-    printf("Evaluating expression: ");
+    printf("  Evaluating: ");;
     if (bexpr_evaluate(&result)) {
         /* evaluation passed */
         if (result == expected_result) {
@@ -145,8 +154,6 @@ static bool parse_file(const char *path)
     FILE    *fp;
     int      lineno = 1;
     bool     status = true;
-    int      total  = 0;
-    int      passed = 0;
 
     fp = fopen(path, "rb");
     if (fp == NULL) {
@@ -155,6 +162,8 @@ static bool parse_file(const char *path)
     }
 
     bexpr_init();
+    total_tests  = 0;
+    passed_tests = 0;
 
     while (true) {
         char *curpos;
@@ -210,25 +219,28 @@ static bool parse_file(const char *path)
                         "%s:%d:%d: Expected evaluation result (\"true\" or"
                         " \"false\").\n",
                         path, lineno, (int)(line - curpos));
+                status = false;
                 goto cleanup;
             }
         }
 
         curpos = skip_whitespace(curpos);
-        printf("[%2d] Tokenizing \"%s\"\n", lineno, curpos);
-
+        printf("Found test #%d at line %d:\t%s\n", total_tests + 1, lineno, curpos);
         if (run_test(curpos, (int)errnum_exp, result_exp)) {
-            passed++;
+            passed_tests++;
         }
         lineno++;
-        total++;
+        total_tests++;
     }
 cleanup:
     bexpr_free();
     fclose(fp);
 
-    printf("Passed: %d out of %d\n", passed, total);
-
+    if (status && total_tests >= 1) {
+        printf("Passed: %d out of %d (%5.1f%%)\n",
+               passed_tests, total_tests,
+               (double)passed_tests / (double)total_tests * 100.0);
+    }
     return status;
 }
 

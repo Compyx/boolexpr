@@ -38,12 +38,12 @@
  *
  * Print debugging message on stdout if \c DEBUG_BEXPR is defined. Use just like
  * printf(), for example: `bexpr_debug("value = %d\n", 42)` will print
- * "[debug] \<funcname\>:\<line\>(): value = 42".
+ * "[debug] \<funcname\>(): value = 42".
  */
 
 #ifdef DEBUG_BEXPR
 #define bexpr_debug(...) \
-    printf("[debug] %s:%d(): ", __func__, __LINE__); \
+    printf("[debug] %s(): ", __func__); \
     printf(__VA_ARGS__)
 #else
 #define bexpr_debug(...)
@@ -818,10 +818,10 @@ static bool infix_to_postfix(void)
         token_list_enqueue(&queue, oper1);
     }
 
-    bexpr_debug("output queue = ");
 #ifdef DEBUG_BEXPR
+    printf("(output queue: ");
     token_list_print(&queue);
-    putchar('\n');
+    printf(")   ");
 #endif
     return true;
 }
