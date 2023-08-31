@@ -331,7 +331,7 @@ static bool is_operand(int id)
  * \throw   BEXPR_ERR_EXPECTED_TOKEN
  * \throw   BEXPR_ERR_INVALID_TOKEN
  */
-static int token_parse(const char *text, const char **endptr)
+int bexpr_token_parse(const char *text, const char **endptr)
 {
     const char *pos;
     size_t      tlen;
@@ -669,7 +669,7 @@ void bexpr_free(void)
  *
  * \return  \c false if token \a id is invalid
  */
-bool bexpr_add_token(int id)
+bool bexpr_token_add(int id)
 {
     if (token_list_push_id(&infix_tokens, id)) {
         return true;
@@ -707,13 +707,13 @@ bool bexpr_tokenize(const char *text)
         int         token;
 
         text  = skip_whitespace(text);
-        token = token_parse(text, &endptr);
+        token = bexpr_token_parse(text, &endptr);
         //printf("%s(): token ID: %d\n", __func__, token);
         if (token == BEXPR_INVALID) {
             /* error code already set */
             return false;
         }
-        bexpr_add_token(token);
+        bexpr_token_add(token);
         text = endptr;
     }
     return true;

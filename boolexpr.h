@@ -65,8 +65,9 @@ void bexpr_reset(void);
 void bexpr_free (void);
 void bexpr_print(void);
 
-bool bexpr_add_token(int token);
-bool bexpr_tokenize (const char *text);
-bool bexpr_evaluate (bool *result);
+int  bexpr_token_parse(const char *text, const char **endptr);
+bool bexpr_token_add  (int token);
+bool bexpr_tokenize   (const char *text);
+bool bexpr_evaluate   (bool *result);
 
 #endif
